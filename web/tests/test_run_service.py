@@ -130,3 +130,15 @@ def test_draft_persists_evaluator_and_gold_input_fingerprints(tmp_path):
     second_row = get_run(db, user_id="local", run_id=second)
     assert second_row["evaluator_version"] == first_row["evaluator_version"]
     assert second_row["gold_fingerprint"] != first_row["gold_fingerprint"]
+
+
+def test_omitted_model_id_selects_model_owned_by_selected_agent(tmp_path):
+    service, db, agent_a, model_a, _ = setup_service(tmp_path)
+    agent_b = create_agent(db, user_id="local", name="Agent B")
+    model_b = create_model(db, user_id="local", agent_id=agent_b["id"], name="Model B",
+                           provider="ollama", model_id="b")
+    run_id = service.create_draft_run("local", agent_b["id"], None,
+                                      [{"task": "cq2term", "domain": "alpha"}], {})
+    run = get_run(db, user_id="local", run_id=run_id)
+    assert run["agent_id"] == agent_b["id"]
+    assert run["model_id"] == model_b["id"]

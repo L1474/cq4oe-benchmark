@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from web.config import Settings
 from web.app import create_app
 from web.db import connect_database
-from web.repositories import add_artifact
+from web.repositories import add_artifact, add_event
 from web.services.evaluator import EvaluationStageError
 from web.services.worker import EvaluationWorker
 
@@ -132,3 +132,18 @@ def test_failure_events_do_not_expose_workspace_paths(tmp_path):
         events = client.get(f"/api/runs/{run['id']}/events").json()
         assert str(tmp_path) not in json.dumps(events)
         assert all("stdout.log" not in event["payload_json"] for event in events)
+
+
+def test_events_endpoint_redacts_legacy_payloads_with_space_paths(tmp_path):
+    client, app = make_client(tmp_path)
+    with client:
+        agent = client.post("/api/agents", json={"name": "Agent"}).json()
+        model = client.post(f"/api/agents/{agent['id']}/models", json={"name": "Local", "model_id": "qwen"}).json()
+        run = client.post("/api/runs", json={"agent_id": agent["id"], "model_id": model["id"],
+                                             "items": [{"task": "cq2term", "domain": "alpha"}]}).json()
+        add_event(app.state.settings.database_path, user_id="local", run_id=run["id"], event_type="legacy_failure",
+                  payload={"message": r"failed at C:/Program Files/CQ4OE/private/stdout.log; still available"})
+        events = client.get(f"/api/runs/{run['id']}/events").json()
+        legacy = next(event for event in events if event["event_type"] == "legacy_failure")
+        assert "C:/Program Files" not in legacy["payload_json"]
+        assert "still available" in legacy["payload_json"]

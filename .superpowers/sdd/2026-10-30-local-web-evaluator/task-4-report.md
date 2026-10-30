@@ -60,3 +60,18 @@ Result: **46 passed**. `git diff --check` passed. Pytest reports one upstream `D
 - Worker stage and error payloads are recursively path-redacted before persistence, and API event serialization also redacts legacy event payloads. Output logs remain indexed as artifacts under their run item.
 - Ollama model pull now uses `/api/pull` streaming, a 10-second connection timeout, an unbounded response read timeout, and response closure on shutdown. Tests cover a slow pull, streaming request shape, and cancellation.
 - Final command `PYTHONDONTWRITEBYTECODE=1 python -m pytest web/tests -q -p no:cacheprovider`: **57 passed**, with one upstream Starlette/AnyIO deprecation warning.
+
+## Fix Round 2
+
+### RED
+
+- Added a regression test with two Agents where the earlier model belongs to Agent A; creating a draft for Agent B without `model_id` failed because selection chose the globally oldest model.
+- Added path-redaction cases for drive paths with forward slashes, UNC paths, and POSIX/Windows paths containing spaces. The previous expression only partially redacted paths with spaces and did not cover UNC paths.
+- Added an API test confirming `/api/runs/{run_id}/events` redacts a legacy persisted payload containing a spaced absolute path while retaining surrounding message text.
+
+### GREEN
+
+- `RunService` now verifies Agent ownership before model lookup and selects the default model using both `user_id` and `agent_id`.
+- Path redaction scans Windows drive, UNC, and POSIX absolute paths, handles spaces through the file suffix or explicit delimiters, and preserves text following the path. Legacy event serialization uses the same redactor.
+- Focused command `PYTHONDONTWRITEBYTECODE=1 python -m pytest web/tests/test_run_service.py web/tests/test_privacy.py web/tests/test_api.py -q -p no:cacheprovider`: **19 passed**.
+- Full command `PYTHONDONTWRITEBYTECODE=1 python -m pytest web/tests -q -p no:cacheprovider`: **63 passed**. Both runs report the existing Starlette/AnyIO deprecation warning.

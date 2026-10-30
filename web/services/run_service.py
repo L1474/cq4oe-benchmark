@@ -81,17 +81,19 @@ class RunService:
             if isinstance(exc, RunServiceError):
                 raise
             raise RunServiceError(f"Invalid task or domain: {exc}") from exc
-        if model_id is None:
-            with connect_database(self.db_path) as conn:
-                model = conn.execute("SELECT id FROM models WHERE user_id=? ORDER BY created_at,id LIMIT 1", (user_id,)).fetchone()
-            if model is None:
-                raise RunServiceError("A model is required to create a run.")
-            model_id = model["id"]
         with connect_database(self.db_path) as conn:
             agent = conn.execute("SELECT 1 FROM agents WHERE id=? AND user_id=?", (agent_id, user_id)).fetchone()
+            if agent is None:
+                raise RunServiceError("Agent not found.")
+            if model_id is None:
+                model = conn.execute(
+                    "SELECT id FROM models WHERE user_id=? AND agent_id=? ORDER BY created_at,id LIMIT 1",
+                    (user_id, agent_id),
+                ).fetchone()
+                if model is None:
+                    raise RunServiceError("A model is required for the selected Agent.")
+                model_id = model["id"]
             model = conn.execute("SELECT agent_id FROM models WHERE id=? AND user_id=?", (model_id, user_id)).fetchone()
-        if agent is None:
-            raise RunServiceError("Agent not found.")
         if model is None or model["agent_id"] != agent_id:
             raise RunServiceError("Model does not belong to the selected Agent.")
         evaluator_version, gold_fingerprint = _provenance(self.project_root, prepared)

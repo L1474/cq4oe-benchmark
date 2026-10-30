@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from web.domain.catalog import _cq_file, _load_cqs, _load_source_cqs
+from web.domain.catalog import _cq_file, _load_cqs
 
 
 def _json_bytes(value: object) -> bytes:
@@ -12,18 +12,19 @@ def _json_bytes(value: object) -> bytes:
 
 
 def build_cq_bundle(project_root: Path, task: str, domain: str) -> bytes:
-    cqs = _load_cqs(_cq_file(project_root, task, domain))
-    source_cqs = _load_source_cqs(_cq_file(project_root, task, domain))
+    cq_path = _cq_file(project_root, task, domain)
+    raw_source_cqs = json.loads(cq_path.read_text(encoding="utf-8"))
+    cqs = _load_cqs(cq_path)
     canonical_cq_json = json.dumps(
-        source_cqs, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        raw_source_cqs, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     manifest = {
         "task": task,
         "domain": domain,
         "version": hashlib.sha256(canonical_cq_json).hexdigest(),
         "count": len(cqs),
-        "source_count": len(source_cqs),
-        "deduplicated_exact_duplicates": len(source_cqs) - len(cqs),
+        "source_count": len(raw_source_cqs),
+        "deduplicated_exact_duplicates": len(raw_source_cqs) - len(cqs),
         "expected_cq_ids": [cq["id"] for cq in cqs],
     }
     readme = (

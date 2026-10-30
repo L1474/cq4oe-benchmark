@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import shutil
 import zipfile
 
 from web.domain.bundles import build_cq_bundle
@@ -64,3 +65,31 @@ def test_odrl_package_exposes_raw_and_deduplicated_counts():
     assert manifest["count"] == 17
     assert manifest["deduplicated_exact_duplicates"] == 2
     assert len(manifest["expected_cq_ids"]) == len(template) == 17
+
+
+def test_manifest_version_hashes_canonical_raw_source_json(tmp_path):
+    root = tmp_path
+    source_path = root / "CQ2Term" / "competency_question" / "wine_cq2term_cqs.json"
+    source_path.parent.mkdir(parents=True)
+    shutil.copy(PROJECT_ROOT / "CQ2Term/competency_question/wine_cq2term_cqs.json", source_path)
+
+    first = build_cq_bundle(root, "cq2term", "wine")
+    repeated = build_cq_bundle(root, "cq2term", "wine")
+    with zipfile.ZipFile(io.BytesIO(first)) as archive:
+        first_manifest = json.loads(archive.read("manifest.json"))
+        first_cqs = archive.read("cqs.json")
+    with zipfile.ZipFile(io.BytesIO(repeated)) as archive:
+        repeated_manifest = json.loads(archive.read("manifest.json"))
+
+    source = json.loads(source_path.read_text(encoding="utf-8"))
+    source[0]["provenance"] = "changed source-only field"
+    source_path.write_text(json.dumps(source), encoding="utf-8")
+    changed = build_cq_bundle(root, "cq2term", "wine")
+    with zipfile.ZipFile(io.BytesIO(changed)) as archive:
+        changed_manifest = json.loads(archive.read("manifest.json"))
+        changed_cqs = archive.read("cqs.json")
+
+    assert first == repeated
+    assert repeated_manifest["version"] == first_manifest["version"]
+    assert changed_cqs == first_cqs
+    assert changed_manifest["version"] != first_manifest["version"]

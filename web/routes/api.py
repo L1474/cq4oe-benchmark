@@ -16,6 +16,7 @@ from web.repositories import (add_event, create_agent, create_model, get_run, li
                               list_models, list_run_records, list_runs, resolve_artifact_path)
 from web.services.run_service import RunServiceError
 from web.services.privacy import redact_paths
+from web.services.health import health_response
 
 api_router = APIRouter()
 
@@ -111,8 +112,7 @@ def _public_event(event):
 
 @api_router.get("/health")
 def health(request: Request):
-    ready = request.app.state.readiness.is_ready() if getattr(request.app.state, "readiness", None) else False
-    return {"status": "ok", "model_ready": ready}
+    return health_response(request.app.state.settings, request.app.state.readiness)
 
 
 @api_router.get("/catalog")

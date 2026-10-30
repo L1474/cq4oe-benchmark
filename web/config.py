@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,3 +28,12 @@ class Settings:
     @property
     def web_root(self):
         return Path(__file__).resolve().parent
+
+
+def settings_from_environment(project_root: Path) -> Settings:
+    project_root = Path(project_root).resolve()
+    return Settings(
+        project_root=project_root,
+        data_root=Path(os.environ.get("CQ4OE_DATA_DIR", project_root / "web-data")),
+        ollama_url=os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+    )

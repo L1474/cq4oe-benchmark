@@ -7,11 +7,12 @@ from typing import Callable
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from web.config import Settings
+from web.config import Settings, settings_from_environment
 from web.db import initialize_database
 from web.routes.api import api_router
 from web.routes.pages import pages_router
 from web.services.model_readiness import ModelReadinessService
+from web.services.health import health_response
 from web.services.run_service import RunService
 from web.services.worker import EvaluationWorker
 
@@ -52,11 +53,10 @@ def create_app(settings: Settings, worker_factory: Callable | None = None) -> Fa
 
     @app.get("/health")
     def health():
-        ready = app.state.readiness.is_ready() if app.state.readiness else False
-        return {"status": "ok", "model_ready": ready}
+        return health_response(settings, app.state.readiness)
 
     return app
 
 
 _root = Path(__file__).resolve().parents[1]
-app = create_app(Settings(project_root=_root, data_root=_root / "web-data"))
+app = create_app(settings_from_environment(_root))

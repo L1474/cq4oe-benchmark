@@ -24,6 +24,31 @@ Check the current [leaderboard from running the benchmark with three families of
 ## Using CQ4OE
 If you want to use CQ4OE with your generated ontologies from your own baselines, please see the [usage instructions](usage_instructions.md).
 
+### Local evaluator (Docker Compose)
+
+Install Docker Desktop (or Docker Engine with the Compose plugin) and start it before running these commands from the repository root. The application image contains Python 3.10 and Java 17 for the HermiT reasoner. On the first launch, Ollama downloads `embeddinggemma` into its persistent Docker volume. The web pages are available while this happens; queued evaluations wait for the model. The download needs network access and may take several minutes.
+
+```sh
+docker compose up --build -d
+docker compose ps
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). `http://127.0.0.1:8000/health` reports `database` (`ok` or `unavailable`) and `embedding` (`starting` or `ready`). The app is healthy while embedding is still starting. To watch the first model pull or diagnose a failed launch, use `docker compose logs -f app ollama`.
+
+1. Create an Agent and one of its models on the Agents page. The model entry labels your evaluated submission; the evaluator does not run your Agent.
+2. Create a run, choose one or more task/domain pairs, and download each CQ package from the domain drawer. Each ZIP contains `cqs.json`, `manifest.json` with the version and complete CQ IDs, and a README. CQ2Term packages also include `prediction_template.json`. Packages contain no gold answers.
+3. Produce predictions outside the app. Upload a UTF-8 JSON list for CQ2Term, with one object per CQ ID and `class` and `property` arrays of strings. Upload an ontology for CQ2Onto as `.owl`, `.rdf`, `.xml`, `.ttl`, `.nt`, or `.n3`. For CQ2Onto, confirm the complete CQ-ID checklist after providing every question to your Agent.
+4. Start the run. Records show its progress and comparable trends. Open a run for stage logs, a Markdown report, metrics, input snapshots, and downloadable evaluator outputs. CQ2Onto results can include Atomic TBox and hierarchy artifacts; output formats include JSON, CSV, TXT, and XLSX where produced by the evaluator. Select two to four compatible records on Compare to inspect metrics side by side.
+
+The host directory `./data` is mounted at `/app/data` and contains `evaluator.sqlite3` plus `runs/<run-id>/` inputs, logs, work files, reports, and results. Stop and restart without losing this data:
+
+```sh
+docker compose down
+docker compose up -d
+```
+
+For a consistent backup, stop the app before copying the entire `./data` directory; keep the database and run files together. The Ollama model volume is separate and can be downloaded again. To reset application history, run `docker compose down`, then remove `./data` after making any needed backup. `docker compose down -v` also deletes the downloaded Ollama models. Neither `docker compose down` nor rebuilding the app image removes `./data`.
+
 ## Contributing to CQ4OE
 If you wish to submit your own results, please open an issue with:
 - The generated ontologies (a .ttl file for each)

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CQ4OE Evaluator{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/runs/new">CQ4OE <span>Evaluator</span></a>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <a href="/runs/new" {% if request.url.path == '/runs/new' %}aria-current="page"{% endif %}>Run</a>
+        <a href="/records" {% if request.url.path.startswith('/records') or request.url.path.startswith('/runs/') %}aria-current="page"{% endif %}>Records</a>
+        <a href="/domains" {% if request.url.path.startswith('/domains') %}aria-current="page"{% endif %}>Domains</a>
+        <a href="/agents" {% if request.url.path == '/agents' %}aria-current="page"{% endif %}>Agent Management</a>
+      </nav>
+    </aside>
+    <main class="page-content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

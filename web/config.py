@@ -23,3 +23,7 @@ class Settings:
     @property
     def runs_root(self):
         return self.data_root / "runs"
+
+    @property
+    def web_root(self):
+        return Path(__file__).resolve().parent

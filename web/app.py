@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from web.config import Settings
 from web.db import initialize_database
 from web.routes.api import api_router
+from web.routes.pages import pages_router
 from web.services.model_readiness import ModelReadinessService
 from web.services.run_service import RunService
 from web.services.worker import EvaluationWorker
@@ -45,6 +47,8 @@ def create_app(settings: Settings, worker_factory: Callable | None = None) -> Fa
                                        settings.max_upload_bytes)
     app.state.readiness = None
     app.include_router(api_router, prefix="/api")
+    app.include_router(pages_router)
+    app.mount("/static", StaticFiles(directory=settings.web_root / "static"), name="static")
 
     @app.get("/health")
     def health():

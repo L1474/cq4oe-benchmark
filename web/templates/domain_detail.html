@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ domain.name }} · Domains{% endblock %}
+{% block content %}
+<div class="breadcrumbs"><a href="/domains">Domains</a><span>/</span><span>{{ domain.name }}</span></div>
+<section class="page-heading"><div><p class="eyebrow">Benchmark domain</p><h1>{{ domain.name }}</h1></div><a class="button" href="/runs/new?domain={{ domain.slug }}">New run</a></section>
+<div class="domain-task-grid">
+{% for task_name, task in domain.tasks.items() %}
+  <section class="task-summary">
+    <div class="task-summary-heading"><div><h2>{{ task_name|upper }}</h2><span class="muted">{{ task.count }} competency questions</span></div><a class="button small" href="/api/catalog/{{ task_name }}/{{ domain.slug }}/bundle">Download bundle</a></div>
+    <p class="input-format"><strong>Input format</strong>{% if task_name == 'cq2term' %} JSON with CQ IDs and class/property term lists{% else %} OWL, RDF/XML, Turtle, N-Triples, or N3{% endif %}</p>
+    <button class="text-button" type="button" data-open-task="{{ task_name }}">Open CQ checklist <span aria-hidden="true">→</span></button>
+  </section>
+{% endfor %}
+</div>
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+<aside class="cq-drawer" id="cq-drawer" aria-labelledby="drawer-title" aria-modal="true" role="dialog" hidden>
+  <div class="drawer-header"><div><p class="eyebrow">{{ domain.slug }}</p><h2 id="drawer-title">Competency questions</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="Close CQ checklist">×</button></div>
+  <div class="drawer-tabs" role="tablist" aria-label="Task">
+    {% for task_name, task in domain.tasks.items() %}<button type="button" role="tab" data-task-tab="{{ task_name }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ task_name|upper }} <span>{{ task.count }}</span></button>{% endfor %}
+  </div>
+  {% for task_name, task in domain.tasks.items() %}
+  <section class="cq-task-panel" data-task-panel="{{ task_name }}" {% if not loop.first %}hidden{% endif %}>
+    <div class="cq-panel-meta"><strong>{{ task.count }} CQs</strong><a class="button small" href="/api/catalog/{{ task_name }}/{{ domain.slug }}/bundle">Download bundle</a></div>
+    <ol class="cq-list">{% for cq in task.cqs %}<li><code>{{ cq.id }}</code><p>{{ cq.question }}</p></li>{% endfor %}</ol>
+  </section>
+  {% endfor %}
+</aside>
+<script id="domain-data" type="application/json">{{ domain|tojson }}</script>
+{% endblock %}

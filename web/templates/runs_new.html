@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}New run · CQ4OE Evaluator{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Evaluation</p><h1>New run</h1></div></section>
+<form id="run-form">
+  <section class="workflow-section">
+    <div class="section-heading"><span class="step-number">1</span><div><h2>Agent and model</h2></div></div>
+    <div class="selection-row"><label>Agent<select id="run-agent" required><option value="">Select Agent</option></select></label><label>Model<select id="run-model" required disabled><option value="">Select model</option></select></label><a class="text-button" href="/agents">Manage Agents →</a></div>
+  </section>
+  <section class="workflow-section">
+    <div class="section-heading"><span class="step-number">2</span><div><h2>Benchmark items</h2></div></div>
+    <div class="item-picker">
+      <label>Task<select id="run-task"><option value="cq2term">CQ2Term</option><option value="cq2onto">CQ2Onto</option></select></label>
+      <label>Domain<select id="run-domain"><option value="">Select domain</option>{% for domain in domains %}<option value="{{ domain.slug }}">{{ domain.name }}</option>{% endfor %}</select></label>
+      <button class="button" type="button" id="add-item">＋ Add item</button>
+    </div>
+    <div class="selected-counts" aria-live="polite">
+      <span>CQ2Term <strong data-cq-count-for="cq2term">0 CQs</strong></span>
+      <span>CQ2Onto <strong data-cq-count-for="cq2onto">0 CQs</strong></span>
+    </div>
+  </section>
+  <section class="workflow-section">
+    <div class="section-heading"><span class="step-number">3</span><div><h2>Prediction files</h2></div></div>
+    <div id="selected-items" class="selected-items"><p class="muted">Select one or more benchmark items.</p></div>
+    <div class="form-actions run-actions"><button class="button primary" type="button" id="prepare-run">Prepare run</button></div>
+  </section>
+</form>
+<div id="run-notice" class="notice" role="status" hidden></div>
+<div id="run-error" class="notice error" role="alert" hidden></div>
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+<aside class="cq-drawer" id="cq-drawer" aria-labelledby="drawer-title" aria-modal="true" role="dialog" hidden>
+  <div class="drawer-header"><div><p class="eyebrow" id="drawer-domain"></p><h2 id="drawer-title">CQ checklist</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="Close CQ checklist">×</button></div>
+  <div class="drawer-tabs" id="drawer-tabs" role="tablist" aria-label="Task"></div>
+  <div id="drawer-content"></div>
+  <div class="drawer-footer"><span class="muted" id="drawer-progress"></span><button class="button primary" id="save-confirmation" type="button" disabled>Confirm provided CQs</button></div>
+</aside>
+<section class="modal-backdrop" id="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" hidden>
+  <div class="modal-panel">
+    <div class="modal-heading"><div><p class="eyebrow">CQ2Onto confirmation</p><h2 id="confirmation-title">Confirm questions provided</h2></div><button class="icon-button" type="button" id="close-confirmation" aria-label="Close confirmation">×</button></div>
+    <p class="confirmation-count"><strong id="confirmation-count">0 / 0</strong><span>CQs provided to the Agent</span></p>
+    <p class="confirmation-help"><a href="#cq-drawer" id="open-checklist">Open CQ checklist →</a></p>
+    <div class="form-actions"><button class="button" type="button" id="cancel-confirmation">Cancel</button><button class="button primary" type="button" id="accept-confirmation" disabled>Continue</button></div>
+  </div>
+</section>
+<script id="domain-index" type="application/json">{{ domains|tojson }}</script>
+{% endblock %}

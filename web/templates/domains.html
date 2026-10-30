@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Domains · CQ4OE Evaluator{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Benchmark catalog</p><h1>Domains</h1></div></section>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Domain</th><th>CQ2Term</th><th>CQ2Onto</th><th></th></tr></thead>
+    <tbody>
+    {% for domain in domains %}
+      <tr><th scope="row"><a class="row-link" href="/domains/{{ domain.slug }}">{{ domain.name }}</a><span class="slug">{{ domain.slug }}</span></th>
+        <td><span class="count-pill">{{ domain.counts.get('cq2term', 0) }} CQs</span></td>
+        <td><span class="count-pill">{{ domain.counts.get('cq2onto', 0) }} CQs</span></td>
+        <td><a class="button small" href="/domains/{{ domain.slug }}">View CQs</a></td></tr>
+    {% else %}<tr><td colspan="4" class="empty-state">No benchmark domains found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

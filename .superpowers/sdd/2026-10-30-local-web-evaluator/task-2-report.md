@@ -64,3 +64,47 @@ Output:
 - Artifact source paths must resolve within the run root, and downloaded artifact paths are checked after resolution to reject traversal and symlink escapes.
 - Metric uniqueness is enforced by SQLite on `(run_item_id, dimension, layer, metric_name, scope)`.
 - No material concerns remain for this storage slice.
+
+## Review Round 1: Run Ownership, Workspace Atomicity, and Stage Provenance
+
+RED command after adding the review regressions:
+
+```text
+cmd.exe /c "set PYTHONDONTWRITEBYTECODE=1 && .superpowers\sdd\2026-10-30-local-web-evaluator\venv\Scripts\python.exe -m pytest -p no:cacheprovider web/tests/test_db.py web/tests/test_repositories.py web/tests/test_artifacts.py -q"
+```
+
+Output:
+
+```text
+ERROR collecting web/tests/test_repositories.py
+ImportError: cannot import name 'get_stage_states' from 'web.repositories'
+1 error in 0.20s
+```
+
+The new repository contract failed collection because stage persistence was not implemented.
+
+GREEN focused persistence command and output:
+
+```text
+cmd.exe /c "set PYTHONDONTWRITEBYTECODE=1 && .superpowers\sdd\2026-10-30-local-web-evaluator\venv\Scripts\python.exe -m pytest -p no:cacheprovider web/tests/test_db.py web/tests/test_repositories.py web/tests/test_artifacts.py -q"
+```
+
+```text
+..........                                                               [100%]
+10 passed in 0.55s
+```
+
+GREEN full web suite command and output:
+
+```text
+cmd.exe /c "set PYTHONDONTWRITEBYTECODE=1 && .superpowers\sdd\2026-10-30-local-web-evaluator\venv\Scripts\python.exe -m pytest -p no:cacheprovider web/tests -q"
+```
+
+```text
+........................                                                 [100%]
+24 passed in 0.63s
+```
+
+The schema is now version 2. Existing version 1 databases migrate by adding evaluator/gold provenance columns, rebuilding artifact and metric constraints to bind item references to the same run, and adding `run_stages`. New and upgraded schemas both enforce `(user_id, run_id, run_item_id)` associations. Run directories are fully created before the queued run transaction; any directory or insert failure removes the partial run workspace. Stage state can be upserted and queried by run and item.
+
+Review regression coverage verifies cross-run artifact/metric inserts fail, injected directory creation failures leave no queued database rows or partial run directories, and evaluator version, gold fingerprint, and stage state round-trip.

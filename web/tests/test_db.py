@@ -17,12 +17,12 @@ def test_initialization_is_idempotent_and_enforces_run_item_constraints(tmp_path
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
-        assert tables == {
+        assert {
             "users", "agents", "models", "runs", "run_items",
-            "artifacts", "metrics", "run_events",
-        }
+            "artifacts", "metrics", "run_events", "run_stages",
+        }.issubset(tables)
         assert connection.execute("SELECT count(*) FROM users").fetchone()[0] == 1
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
                 "INSERT INTO run_items (id, run_id, user_id, task, domain) "

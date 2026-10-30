@@ -10,11 +10,19 @@ class ValidationResult:
 
 
 @dataclass(frozen=True)
+class RunItemInput:
+    task: str
+    domain: str
+
+
+@dataclass(frozen=True)
 class RunItem:
     id: str
     task: str
     domain: str
     input_path: Path
+    confirmed_cq_ids: tuple[str, ...] = ()
+    cq_bundle_sha256: str | None = None
 
 
 @dataclass(frozen=True)

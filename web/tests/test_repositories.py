@@ -13,6 +13,7 @@ from web.repositories import (
     list_runs,
     save_metrics,
     get_stage_states,
+    list_models,
     save_stage_state,
 )
 
@@ -25,6 +26,16 @@ def test_agents_and_models_are_user_scoped(tmp_path):
     assert list_agents(db, user_id="other") == []
     model = create_model(db, user_id="local", name="local-model", provider="ollama", model_id="m")
     assert model["provider"] == "ollama"
+
+
+def test_models_are_listed_under_their_agent(tmp_path):
+    db = tmp_path / "db.sqlite3"
+    initialize_database(db)
+    first = create_agent(db, user_id="local", name="First")
+    second = create_agent(db, user_id="local", name="Second")
+    one = create_model(db, user_id="local", agent_id=first["id"], name="one", provider="ollama", model_id="m1")
+    create_model(db, user_id="local", agent_id=second["id"], name="two", provider="ollama", model_id="m2")
+    assert [model["id"] for model in list_models(db, user_id="local", agent_id=first["id"])] == [one["id"]]
 
 
 def test_run_creation_items_events_and_metric_uniqueness(tmp_path):

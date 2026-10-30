@@ -1,0 +1,136 @@
+import json
+import threading
+import time
+from pathlib import Path
+
+from web.db import connect_database
+from web.repositories import (add_artifact, add_event, claim_oldest_queued_run, get_run,
+                              recover_interrupted_runs, save_metrics, save_stage_state,
+                              transition_run)
+from web.services.commands import build_cq2onto_commands, build_cq2term_command
+from web.services.evaluator import run_stage
+from web.services.metrics import extract_cq2onto_metrics, extract_cq2term_metrics
+from web.services.artifacts import store_artifact
+from web.types import RunItem, RunPaths, EvaluationStage
+
+
+class LocalEvaluator:
+    def __init__(self, project_root):
+        self.project_root = Path(project_root)
+
+    def evaluate_item(self, run, item, event_sink):
+        item_root = Path(run["run_path"]) / "items" / item["id"]
+        paths = RunPaths(item_root)
+        paths.ensure()
+        domain_item = RunItem(item["id"], item["task"], item["domain"], Path(item["input_path"]))
+        config = json.loads(run["config_json"])
+        stages = ([EvaluationStage("evaluate", build_cq2term_command(self.project_root, domain_item, paths, config), self.project_root)]
+                  if item["task"] == "cq2term" else build_cq2onto_commands(self.project_root, domain_item, paths, config))
+        for stage in stages:
+            event_sink({"stage": stage.name, "status": "started"})
+            run_stage(stage, paths.logs / f"{stage.name}.stdout.log", paths.logs / f"{stage.name}.stderr.log",
+                      lambda output: event_sink({**output, "status": "running"}))
+            event_sink({"stage": stage.name, "status": "completed"})
+        if item["task"] == "cq2term":
+            metrics = extract_cq2term_metrics(paths.results / "06_cq_terms/result.json", paths.results / "06_cq_terms/cq_coverage.csv")
+        else:
+            metrics = extract_cq2onto_metrics(paths)
+        return {"metrics": [m.__dict__ for m in metrics], "artifacts": []}
+
+
+class EvaluationWorker:
+    def __init__(self, db_path, runs_root, readiness, evaluator=None, *, project_root=None, poll_interval=1):
+        self.db_path = Path(db_path)
+        self.runs_root = Path(runs_root)
+        self.readiness = readiness
+        self.evaluator = evaluator or LocalEvaluator(project_root or Path.cwd())
+        self.poll_interval = poll_interval
+
+    def recover(self):
+        return recover_interrupted_runs(self.db_path)
+
+    def _claim(self):
+        connection = connect_database(self.db_path)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            run = claim_oldest_queued_run(connection)
+            connection.commit()
+            return run
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def _record_event(self, run, item, event):
+        payload = dict(event)
+        stage = payload.pop("stage", None)
+        status = payload.pop("status", None)
+        add_event(self.db_path, user_id=run["user_id"], run_id=run["id"], event_type="stage", payload={"item_id": item["id"], **event})
+        if stage and status:
+            save_stage_state(self.db_path, user_id=run["user_id"], run_id=run["id"], run_item_id=item["id"],
+                             stage=stage, status=status, state=payload)
+
+    def process_one(self):
+        if not self.readiness.is_ready():
+            return False
+        run = self._claim()
+        if run is None:
+            return False
+        data = get_run(self.db_path, user_id=run["user_id"], run_id=run["id"])
+        failures = 0
+        completed = 0
+        for item in data["items"]:
+            with connect_database(self.db_path) as conn:
+                conn.execute("UPDATE run_items SET status='running', started_at=datetime('now') WHERE id=?", (item["id"],))
+            try:
+                result = self.evaluator.evaluate_item(run, item, lambda event: self._record_event(run, item, event)) or {}
+                for artifact in result.get("artifacts", []):
+                    if isinstance(artifact, dict):
+                        source, category = Path(artifact["path"]), artifact.get("category", "results")
+                        stored = store_artifact(Path(run["run_path"]) / "items" / item["id"], source, category, artifact.get("media_type", "application/octet-stream"))
+                        add_artifact(self.db_path, user_id=run["user_id"], run_id=run["id"], run_item_id=item["id"],
+                                     category=category, relative_path=f"items/{item['id']}/{stored.relative_path}",
+                                     media_type=stored.media_type, size_bytes=stored.size_bytes, sha256=stored.sha256, name=stored.name)
+                if result.get("metrics"):
+                    records = [{**metric, "run_item_id": item["id"]} for metric in result["metrics"]]
+                    save_metrics(self.db_path, user_id=run["user_id"], run_id=run["id"], metrics=records)
+                self._index_outputs(run, item)
+                completed += 1
+                status = "completed"
+            except Exception as exc:
+                failures += 1
+                try:
+                    self._index_outputs(run, item)
+                except Exception as artifact_error:
+                    exc = RuntimeError(f"{exc}; output indexing failed: {artifact_error}")
+                add_event(self.db_path, user_id=run["user_id"], run_id=run["id"], event_type="item_failed",
+                          payload={"item_id": item["id"], "error": str(exc)})
+                status = "failed"
+            with connect_database(self.db_path) as conn:
+                conn.execute("UPDATE run_items SET status=?, finished_at=datetime('now') WHERE id=?", (status, item["id"]))
+        final = "completed" if not failures else "partial" if completed else "failed"
+        transition_run(self.db_path, run_id=run["id"], expected="running", new=final)
+        return True
+
+    def _index_outputs(self, run, item):
+        root = Path(run["run_path"])
+        item_root = root / "items" / item["id"]
+        for category in ("work", "results", "logs"):
+            for path in (item_root / category).rglob("*"):
+                if not path.is_file():
+                    continue
+                relative = path.relative_to(root).as_posix()
+                record = store_artifact(root, path, category, "text/plain")
+                add_artifact(self.db_path, user_id=run["user_id"], run_id=run["id"], run_item_id=item["id"],
+                             category=category, relative_path=record.relative_path, media_type=record.media_type,
+                             size_bytes=record.size_bytes, sha256=record.sha256, name=record.name)
+
+    def run_forever(self, stop_event: threading.Event):
+        self.recover()
+        while not stop_event.is_set():
+            try:
+                if not self.process_one():
+                    stop_event.wait(self.poll_interval)
+            except Exception:
+                stop_event.wait(self.poll_interval)

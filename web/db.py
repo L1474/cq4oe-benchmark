@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 def connect_database(db_path: Path) -> sqlite3.Connection:
@@ -31,6 +31,7 @@ CREATE TABLE agents (
 CREATE TABLE models (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
+    agent_id TEXT REFERENCES agents(id),
     name TEXT NOT NULL,
     provider TEXT NOT NULL,
     model_id TEXT NOT NULL,
@@ -65,6 +66,9 @@ CREATE TABLE run_items (
     created_at TEXT NOT NULL,
     started_at TEXT,
     finished_at TEXT,
+    input_path TEXT,
+    confirmation_json TEXT,
+    bundle_sha256 TEXT,
     UNIQUE(run_id, task, domain),
     UNIQUE(user_id, id),
     UNIQUE(user_id, run_id, id),
@@ -170,6 +174,22 @@ PRAGMA user_version = 2;
 COMMIT;
 """
 
+_MIGRATE_2_TO_3 = """
+BEGIN;
+ALTER TABLE run_items ADD COLUMN input_path TEXT;
+ALTER TABLE run_items ADD COLUMN confirmation_json TEXT;
+ALTER TABLE run_items ADD COLUMN bundle_sha256 TEXT;
+PRAGMA user_version = 3;
+COMMIT;
+"""
+
+_MIGRATE_3_TO_4 = """
+BEGIN;
+ALTER TABLE models ADD COLUMN agent_id TEXT REFERENCES agents(id);
+PRAGMA user_version = 4;
+COMMIT;
+"""
+
 
 def initialize_database(db_path: Path) -> None:
     db_path = Path(db_path)
@@ -180,9 +200,16 @@ def initialize_database(db_path: Path) -> None:
         if version > SCHEMA_VERSION:
             raise RuntimeError(f"database version {version} is newer than supported {SCHEMA_VERSION}")
         if version == 0:
-            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 2;\nCOMMIT;")
+            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 4;\nCOMMIT;")
         elif version == 1:
             connection.executescript(_MIGRATE_1_TO_2)
+            connection.executescript(_MIGRATE_2_TO_3)
+            connection.executescript(_MIGRATE_3_TO_4)
+        elif version == 2:
+            connection.executescript(_MIGRATE_2_TO_3)
+            connection.executescript(_MIGRATE_3_TO_4)
+        elif version == 3:
+            connection.executescript(_MIGRATE_3_TO_4)
         connection.execute(
             "INSERT OR IGNORE INTO users (id, name, created_at) VALUES (?, ?, ?)",
             ("local", "Local User", "1970-01-01T00:00:00+00:00"),

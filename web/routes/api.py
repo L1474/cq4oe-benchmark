@@ -1,17 +1,19 @@
 import json
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
+from web.services.comparison import compare_runs, find_previous_comparable_run
 
 from web.db import connect_database
 from web.domain.bundles import build_cq_bundle
 from web.domain.catalog import get_domain_detail, list_domains
 from web.repositories import (add_event, create_agent, create_model, get_run, list_agents,
-                              list_models, list_runs, resolve_artifact_path)
+                              list_models, list_run_records, list_runs, resolve_artifact_path)
 from web.services.run_service import RunServiceError
 from web.services.privacy import redact_paths
 
@@ -60,6 +62,10 @@ class ConfirmationInput(BaseModel):
     confirmed_ids: list[str]
 
 
+class CompareInput(BaseModel):
+    run_ids: list[str] = Field(min_length=2, max_length=4)
+
+
 def _state(request):
     return request.app.state
 
@@ -84,6 +90,12 @@ def _public_run(run):
         confirmation = item.pop("confirmation_json", None)
         if confirmation:
             item["confirmed_cq_ids"] = json.loads(confirmation)
+    for artifact in result.get("artifacts", []):
+        for key in ("relative_path", "run_path", "user_id"):
+            artifact.pop(key, None)
+    for metric in result.get("metrics", []):
+        for key in ("user_id", "run_path"):
+            metric.pop(key, None)
     result["events"] = [_public_event(event) for event in result.get("events", [])]
     return result
 
@@ -247,8 +259,89 @@ def start_run(request: Request, run_id: str):
 
 
 @api_router.get("/runs")
-def runs(request: Request):
-    return [_public_run(run) for run in list_runs(_state(request).settings.database_path, user_id="local")]
+def runs(request: Request, agent_id: str | None = None, model_id: str | None = None,
+         task: str | None = None, domain: str | None = None, status: str | None = None,
+         from_date: date | None = Query(None, alias="from"), to_date: date | None = Query(None, alias="to"), page: int = 1,
+         page_size: int = 50, trend: bool = True):
+    if page < 1 or page_size < 1:
+        raise HTTPException(422, "page and page_size must be positive")
+    if page_size > 100:
+        raise HTTPException(422, "page_size must not exceed 100")
+    if status and status not in {"draft", "queued", "running", "completed", "partial", "failed"}:
+        raise HTTPException(422, "invalid run status")
+    if task and task not in {"cq2term", "cq2onto"}:
+        raise HTTPException(422, "invalid task")
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(422, "from must be on or before to")
+    rows, total = list_run_records(_state(request).settings.database_path, user_id="local",
+        agent_id=agent_id, model_id=model_id, task=task, domain=domain, status=status,
+        from_date=from_date.isoformat() if from_date else None,
+        to_date=(to_date + timedelta(days=1)).isoformat() if to_date else None,
+        page=page, page_size=page_size)
+    all_runs = ([get_run(_state(request).settings.database_path, user_id="local", run_id=entry["id"])
+                 for entry in list_runs(_state(request).settings.database_path, user_id="local")] if trend else [])
+    response = []
+    for row in rows:
+        run = get_run(_state(request).settings.database_path, user_id="local", run_id=row["id"])
+        run.update({key: row[key] for key in ("agent_name", "model_name", "model_label")})
+        previous = find_previous_comparable_run(run, [candidate for candidate in all_runs if candidate["id"] != run["id"]]) if trend else None
+        public = _public_run(run)
+        public["trend"] = {"enabled": trend, "previous_run_id": previous["id"] if previous else None}
+        if previous:
+            public["trend"]["deltas"] = [{"key": list(comparison.key), "delta": entry.delta,
+                "improved": entry.improved, "current": entry.current.get("value") if entry.current else None,
+                "previous": entry.previous.get("value") if entry.previous else None}
+                for comparison in compare_runs([previous, run]).metrics
+                for entry in comparison.entries[1:] if entry.comparable]
+        response.append(public)
+    return {"items": response, "total": total, "page": page, "page_size": page_size}
+
+
+@api_router.post("/runs/compare")
+def compare_runs_route(request: Request, body: CompareInput):
+    if len(set(body.run_ids)) != len(body.run_ids):
+        raise HTTPException(422, "select distinct runs")
+    records = []
+    for run_id in body.run_ids:
+        run = get_run(_state(request).settings.database_path, user_id="local", run_id=run_id)
+        if run is None:
+            raise HTTPException(404, "Run not found")
+        records.append(run)
+    task_sets = [{item["task"] for item in run["items"]} for run in records]
+    if len({frozenset(tasks) for tasks in task_sets}) != 1 or len({_canonical_config(run) for run in records}) != 1:
+        raise HTTPException(422, "selected runs must use compatible task and configuration scopes")
+    if len({(run.get("evaluator_version"), run.get("gold_fingerprint")) for run in records}) != 1:
+        raise HTTPException(422, "selected runs must use matching evaluator and gold fingerprints")
+    result = compare_runs(records)
+    with connect_database(_state(request).settings.database_path) as connection:
+        labels = {}
+        for run in records:
+            row = connection.execute("SELECT a.name AS agent_name,m.name AS model_name,m.model_id AS model_label "
+                "FROM runs r JOIN agents a ON a.id=r.agent_id JOIN models m ON m.id=r.model_id "
+                "WHERE r.id=? AND r.user_id='local'", (run["id"],)).fetchone()
+            labels[run["id"]] = dict(row)
+    return {"run_ids": result.run_ids, "domains": result.domains,
+            "intersection_count": result.intersection_count,
+            "runs": [{"id": run["id"], "agent_name": labels[run["id"]]["agent_name"],
+                      "model_name": labels[run["id"]]["model_name"],
+                      "model_label": labels[run["id"]]["model_label"],
+                      "config": json.loads(run["config_json"]), "status": run["status"]}
+                     for run in records],
+            "metrics": [{"key": list(metric.key), "entries": [{"delta": entry.delta,
+                         "comparable": entry.comparable, "reason": entry.reason,
+                         "improved": entry.improved,
+                         "value": entry.current.get("value") if entry.current else None}
+                         for entry in metric.entries]}
+                        for metric in result.metrics]}
+
+
+def _canonical_config(run):
+    value = run.get("config_json", "{}")
+    try:
+        value = json.loads(value) if isinstance(value, str) else value
+    except json.JSONDecodeError:
+        pass
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
 @api_router.get("/runs/{run_id}")
@@ -265,6 +358,24 @@ def run_events(request: Request, run_id: str):
     if not run:
         raise HTTPException(404, "Run not found")
     return [_public_event(event) for event in run["events"]]
+
+
+@api_router.get("/runs/{run_id}/artifacts/{artifact_id}")
+def run_artifact_download(request: Request, run_id: str, artifact_id: str):
+    db = _state(request).settings.database_path
+    with connect_database(db) as conn:
+        row = conn.execute("SELECT a.*,r.run_path FROM artifacts a JOIN runs r ON r.id=a.run_id "
+                           "WHERE a.id=? AND a.run_id=? AND a.user_id='local' AND r.user_id='local'",
+                           (artifact_id, run_id)).fetchone()
+    if row is None:
+        raise HTTPException(404, "Artifact not found")
+    try:
+        path = resolve_artifact_path(Path(row["run_path"]), dict(row))
+    except ValueError:
+        raise HTTPException(404, "Artifact not found")
+    if not path.is_file():
+        raise HTTPException(404, "Artifact file not found")
+    return FileResponse(path, media_type=row["media_type"], filename=row["name"])
 
 
 @api_router.get("/artifacts/{artifact_id}")

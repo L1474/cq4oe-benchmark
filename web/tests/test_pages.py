@@ -61,3 +61,51 @@ def test_domain_detail_exposes_task_cqs_and_task_bundle_links(tmp_path):
         assert "/api/catalog/cq2onto/alpha/bundle" in page
         assert "Prediction input" in page
         assert "OWL, RDF/XML, Turtle, N-Triples, or N3" in page
+
+
+def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
+    from web.repositories import add_artifact, create_agent, create_model, create_run
+
+    client = make_page_client(tmp_path)
+    app = client.app
+    with client:
+        records = client.get("/records")
+        assert records.status_code == 200
+        assert 'id="records-body"' in records.text
+        assert 'id="trend-toggle"' in records.text
+        assert client.get("/compare").status_code == 200
+
+        agent = create_agent(app.state.settings.database_path, user_id="local", name="A")
+        model = create_model(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
+                             name="M", provider="ollama", model_id="m")
+        runs = [create_run(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
+                           model_id=model["id"], items=[{"task": "cq2onto", "domain": "alpha"}],
+                           config={}, runs_root=app.state.settings.runs_root, initial_status="completed")
+                for _ in range(2)]
+        run = runs[0]
+        report = "# Report\n\n<script>alert(1)</script>\n\n## Class\n\n| Metric | Value |\n| --- | --- |\n| F1 | 0.5 |\n"
+        report_path = app.state.settings.runs_root / run["id"] / "results" / "report.md"
+        report_path.parent.mkdir(parents=True)
+        report_path.write_text(report, encoding="utf-8")
+        add_artifact(app.state.settings.database_path, user_id="local", run_id=run["id"], run_item_id=None,
+                     category="results", relative_path="results/report.md", media_type="text/markdown",
+                     size_bytes=len(report), sha256="x", name="report.md")
+        other_path = app.state.settings.runs_root / run["id"] / "items" / run["items"][0]["id"] / "results" / "report.md"
+        other_path.parent.mkdir(parents=True, exist_ok=True)
+        other_path.write_text("# Property\n\nSecond complete report.", encoding="utf-8")
+        add_artifact(app.state.settings.database_path, user_id="local", run_id=run["id"],
+                     run_item_id=run["items"][0]["id"], category="results",
+                     relative_path=f"items/{run['items'][0]['id']}/results/report.md",
+                     media_type="text/markdown", size_bytes=32, sha256="y", name="report.md")
+
+        detail = client.get(f"/runs/{run['id']}")
+        assert detail.status_code == 200
+        assert "<script>" not in detail.text
+        assert "alert(1)" in detail.text
+        assert "<table>" in detail.text
+        assert 'href="#report-1-class"' in detail.text
+        assert 'id="report-1-class"' in detail.text
+        assert "Second complete report." in detail.text
+        assert 'href="#report-2-property"' in detail.text
+        assert '<pre>{}</pre>' in detail.text
+        assert client.get(f"/compare?run_ids={runs[0]['id']},{runs[1]['id']}").status_code == 200

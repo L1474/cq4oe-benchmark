@@ -96,7 +96,9 @@ def get_run(db_path: Path, *, user_id: str, run_id: str) -> dict | None:
         result["items"] = [_dict(item) for item in connection.execute("SELECT * FROM run_items WHERE user_id = ? AND run_id = ? ORDER BY created_at, id", (user_id, run_id))]
         result["events"] = [_dict(event) for event in connection.execute("SELECT * FROM run_events WHERE user_id = ? AND run_id = ? ORDER BY rowid", (user_id, run_id))]
         result["artifacts"] = [_dict(item) for item in connection.execute("SELECT * FROM artifacts WHERE user_id = ? AND run_id = ? ORDER BY created_at, id", (user_id, run_id))]
-        result["metrics"] = [_dict(item) for item in connection.execute("SELECT * FROM metrics WHERE user_id = ? AND run_id = ? ORDER BY created_at, id", (user_id, run_id))]
+        result["metrics"] = [_dict(item) for item in connection.execute(
+            "SELECT m.*,i.task,i.domain FROM metrics m JOIN run_items i ON i.id=m.run_item_id "
+            "WHERE m.user_id = ? AND m.run_id = ? ORDER BY m.created_at, m.id", (user_id, run_id))]
         result["stages"] = [_dict(item) for item in connection.execute("SELECT run_id, run_item_id, stage, status, state_json, updated_at FROM run_stages WHERE user_id = ? AND run_id = ? ORDER BY run_item_id, stage", (user_id, run_id))]
         return result
 
@@ -166,6 +168,43 @@ def recover_interrupted_runs(db_path: Path) -> list[str]:
 def list_runs(db_path: Path, *, user_id: str) -> list[dict]:
     with connect_database(db_path) as connection:
         return [_dict(row) for row in connection.execute("SELECT * FROM runs WHERE user_id = ? ORDER BY created_at DESC, id", (user_id,))]
+
+
+def list_run_records(db_path: Path, *, user_id: str, agent_id: str | None = None,
+                     model_id: str | None = None, task: str | None = None,
+                     domain: str | None = None, status: str | None = None,
+                     from_date: str | None = None, to_date: str | None = None,
+                     page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+    clauses = ["r.user_id = ?"]
+    params: list = [user_id]
+    for column, value in (("r.agent_id", agent_id), ("r.model_id", model_id), ("r.status", status)):
+        if value:
+            clauses.append(f"{column} = ?")
+            params.append(value)
+    if from_date:
+        clauses.append("r.created_at >= ?")
+        params.append(from_date)
+    if to_date:
+        clauses.append("r.created_at < ?")
+        params.append(to_date)
+    if task or domain:
+        item_clause = "EXISTS (SELECT 1 FROM run_items i WHERE i.run_id=r.id AND i.user_id=r.user_id"
+        if task:
+            item_clause += " AND i.task=?"
+            params.append(task)
+        if domain:
+            item_clause += " AND i.domain=?"
+            params.append(domain)
+        clauses.append(item_clause + ")")
+    where = " AND ".join(clauses)
+    offset = (page - 1) * page_size
+    with connect_database(db_path) as connection:
+        total = connection.execute(f"SELECT COUNT(*) FROM runs r WHERE {where}", params).fetchone()[0]
+        rows = connection.execute(
+            "SELECT r.*,a.name AS agent_name,m.name AS model_name,m.model_id AS model_label "
+            f"FROM runs r JOIN agents a ON a.id=r.agent_id JOIN models m ON m.id=r.model_id WHERE {where} "
+            "ORDER BY r.created_at DESC,r.id LIMIT ? OFFSET ?", (*params, page_size, offset)).fetchall()
+        return [_dict(row) for row in rows], total
 
 
 def add_event(db_path: Path, *, user_id: str, run_id: str, event_type: str, payload: dict | None = None) -> dict:

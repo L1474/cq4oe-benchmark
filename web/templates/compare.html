@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Compare Runs · CQ4OE Evaluator{% endblock %}
+{% block content %}
+<header class="page-heading"><div><p class="eyebrow"><a href="/records">Run Records</a></p><h1>Compare runs</h1></div></header>
+<div id="compare-root" data-run-ids="{{ runs|map(attribute='id')|join(',') }}">
+{% if runs|length < 2 %}<p class="muted">Select two to four runs from Records to compare their shared domains and metric deltas.</p>
+{% else %}<p class="compare-intersection" id="compare-intersection">Comparing {{ runs|length }} runs…</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Metric</th>{% for run in runs %}<th data-compare-run-id="{{ run.id }}"><a href="/runs/{{ run.id }}">{{ run.id[:8] }}</a><small>{{ run.status }} · {{ run.created_at }}</small></th>{% endfor %}</tr></thead><tbody id="compare-body"><tr><td colspan="{{ runs|length + 1 }}">Loading comparison…</td></tr></tbody></table></div>{% endif %}
+</div>
+{% endblock %}

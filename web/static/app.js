@@ -719,4 +719,104 @@
   setupDomainDrawer();
   setupAgents();
   setupRunForm();
+
+  async function setupRecords() {
+    const body = $("#records-body");
+    if (!body) return;
+    let page = 1;
+    const selected = new Set();
+    const query = () => {
+      const params = new URLSearchParams({ page: String(page), page_size: "50", trend: $("#trend-toggle").checked ? "1" : "0" });
+      for (const [id, key] of [["filter-agent", "agent_id"], ["filter-model", "model_id"], ["filter-task", "task"],
+        ["filter-domain", "domain"], ["filter-status", "status"], ["filter-from", "from"], ["filter-to", "to"]]) {
+        const value = $(`#${id}`).value;
+        if (value) params.set(key, value);
+      }
+      return params;
+    };
+    const refresh = async () => {
+      try {
+        const response = await request(`/api/runs?${query()}`);
+        body.replaceChildren();
+        for (const run of response.items) {
+          const row = document.createElement("tr");
+          row.dataset.runId = run.id;
+          const checkCell = document.createElement("td");
+          const check = document.createElement("input");
+          check.type = "checkbox"; check.checked = selected.has(run.id); check.setAttribute("aria-label", `Select run ${run.id}`);
+          check.addEventListener("change", () => { check.checked ? selected.add(run.id) : selected.delete(run.id); updateCompare(); });
+          checkCell.append(check);
+          const link = (text, href) => { const a = document.createElement("a"); a.href = href; a.textContent = text; return a; };
+          const created = document.createElement("td"); created.textContent = new Date(run.created_at).toLocaleString();
+          const agent = document.createElement("td"); agent.append(document.createTextNode(`${run.agent_name} / ${run.model_name}`));
+          const taskDomain = document.createElement("td"); taskDomain.textContent = run.items.map((item) => `${item.task.toUpperCase()} / ${item.domain}`).join(", ");
+          const state = document.createElement("td"); state.textContent = run.status;
+          const metrics = document.createElement("td"); metrics.textContent = run.metrics.filter((metric) => ["f1", "precision", "recall", "coverage"].includes(metric.metric_name)).map((metric) => `${metric.task}/${metric.domain} ${metric.dimension} ${metric.metric_name}: ${metric.value ?? "—"}`).join(" · ") || "—";
+          const trend = document.createElement("td");
+          if (run.trend.previous_run_id) {
+            trend.append(link(`vs ${run.trend.previous_run_id.slice(0, 8)}`, `/compare?run_ids=${encodeURIComponent(run.trend.previous_run_id)},${encodeURIComponent(run.id)}`));
+            for (const delta of run.trend.deltas || []) {
+              const indicator = document.createElement("span");
+              indicator.className = delta.improved === true ? "trend-improved" : delta.improved === false ? "trend-declined" : "trend-neutral";
+              indicator.textContent = ` ${delta.improved === true ? "↑" : delta.improved === false ? "↓" : "·"} ${delta.key[4]} ${delta.delta > 0 ? "+" : ""}${Number(delta.delta).toFixed(3)}`;
+              trend.append(indicator);
+            }
+          } else trend.textContent = $("#trend-toggle").checked ? "No comparable run" : "Off";
+          const runLink = link(run.id.slice(0, 8), `/runs/${encodeURIComponent(run.id)}`);
+          created.prepend(runLink);
+          row.append(checkCell, created, agent, taskDomain, state, metrics, trend); body.append(row);
+        }
+        if (!response.items.length) { const row = document.createElement("tr"); const cell = document.createElement("td"); cell.colSpan = 7; cell.textContent = "No runs match these filters."; row.append(cell); body.append(row); }
+        $("#record-count").textContent = `${response.total} records`;
+        $("#records-page").textContent = `Page ${response.page} of ${Math.max(1, Math.ceil(response.total / response.page_size))}`;
+        $("#records-prev").disabled = page <= 1;
+        $("#records-next").disabled = page * response.page_size >= response.total;
+        updateCompare();
+      } catch (error) { body.textContent = error.message; }
+    };
+    const updateCompare = () => { $("#compare-selected").disabled = selected.size < 2 || selected.size > 4; };
+    const reload = () => { page = 1; refresh(); };
+    for (const filter of $$(".records-toolbar select, .records-toolbar input[type=date], #trend-toggle")) filter.addEventListener("change", reload);
+    $("#clear-record-filters").addEventListener("click", () => { for (const filter of $$(".records-toolbar select, .records-toolbar input[type=date]")) filter.value = ""; $("#trend-toggle").checked = true; reload(); });
+    $("#records-prev").addEventListener("click", () => { page -= 1; refresh(); });
+    $("#records-next").addEventListener("click", () => { page += 1; refresh(); });
+    $("#compare-selected").addEventListener("click", () => { window.location.assign(`/compare?run_ids=${[...selected].map(encodeURIComponent).join(",")}`); });
+    $("#filter-agent").addEventListener("change", async () => {
+      const select = $("#filter-model"); select.replaceChildren(new Option("All models", ""));
+      if ($("#filter-agent").value) {
+        const models = await request(`/api/agents/${encodeURIComponent($("#filter-agent").value)}/models`);
+        for (const model of models) select.add(new Option(model.name, model.id));
+      }
+      reload();
+    });
+    refresh();
+  }
+
+  async function setupCompare() {
+    const root = $("#compare-root");
+    const body = $("#compare-body");
+    if (!root || !body) return;
+    try {
+      const result = await request("/api/runs/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_ids: root.dataset.runIds.split(",") }) });
+      $("#compare-intersection").textContent = `${result.intersection_count} shared domain${result.intersection_count === 1 ? "" : "s"}: ${result.domains.join(", ") || "none"}`;
+      for (const run of result.runs) {
+        const heading = $(`[data-compare-run-id="${run.id}"]`);
+        if (!heading) continue;
+        const context = document.createElement("small");
+        context.textContent = `${run.agent_name} / ${run.model_name} · config ${JSON.stringify(run.config)}`;
+        heading.append(context);
+      }
+      body.replaceChildren();
+      for (const metric of result.metrics) {
+        const row = document.createElement("tr");
+        const label = document.createElement("th"); label.textContent = `${metric.key[0]} / ${metric.key[1]} · ${metric.key[2]} · ${metric.key[3]} · ${metric.key[4]} · ${metric.key[6]}`; row.append(label);
+        for (const entry of metric.entries) { const cell = document.createElement("td"); cell.textContent = entry.value == null ? "—" : `${Number(entry.value).toFixed(4)}${entry.delta == null ? "" : ` (${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toFixed(4)})`}`; if (entry.improved === true) cell.classList.add("metric-improved"); if (entry.improved === false) cell.classList.add("metric-declined"); row.append(cell); }
+        body.append(row);
+      }
+      if (!result.metrics.length) body.innerHTML = `<tr><td colspan="${result.run_ids.length + 1}">No compatible metrics in shared domains.</td></tr>`;
+    } catch (error) { body.textContent = error.message; }
+  }
+
+  setupRecords();
+  setupCompare();
 })();

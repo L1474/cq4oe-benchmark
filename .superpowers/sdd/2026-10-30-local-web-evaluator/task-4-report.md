@@ -43,3 +43,20 @@ Result: **46 passed**. `git diff --check` passed. Pytest reports one upstream `D
 - Worker output indexing snapshots each item-local category walk before copying artifacts back into that same item tree. Declared artifact metadata is applied during the single indexing pass, avoiding a second indexing pass for the same source.
 - Added a migration regression test covering a legacy model shared across two Agents and verifying both historical run mappings and `PRAGMA foreign_key_check` after migration.
 - Final fix-round command `PYTHONDONTWRITEBYTECODE=1 python -m pytest web/tests -q -p no:cacheprovider`: **50 passed** with the same single upstream Starlette/AnyIO deprecation warning.
+
+## Audit Follow-up
+
+### RED
+
+- Parameterized v1/v2 migration tests initially stopped at schema version 4.
+- Provenance coverage initially found draft runs still had the default empty evaluator and gold fingerprints.
+- An API failure-event test found `EvaluationStageError` stdout/stderr paths in event payloads.
+- Readiness tests showed the pull was non-streaming and had no cancellable slow-pull lifecycle.
+
+### GREEN
+
+- `initialize_database` now applies every migration in sequence; v1 and v2 test databases both reach schema 5 and reject cross-Agent model/run pairs.
+- Draft runs hash evaluator Python sources and task/domain gold input files. The test confirms the evaluator fingerprint is stable while changing a gold file changes the gold fingerprint.
+- Worker stage and error payloads are recursively path-redacted before persistence, and API event serialization also redacts legacy event payloads. Output logs remain indexed as artifacts under their run item.
+- Ollama model pull now uses `/api/pull` streaming, a 10-second connection timeout, an unbounded response read timeout, and response closure on shutdown. Tests cover a slow pull, streaming request shape, and cancellation.
+- Final command `PYTHONDONTWRITEBYTECODE=1 python -m pytest web/tests -q -p no:cacheprovider`: **57 passed**, with one upstream Starlette/AnyIO deprecation warning.

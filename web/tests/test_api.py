@@ -10,6 +10,8 @@ from web.config import Settings
 from web.app import create_app
 from web.db import connect_database
 from web.repositories import add_artifact
+from web.services.evaluator import EvaluationStageError
+from web.services.worker import EvaluationWorker
 
 
 class FakeWorker:
@@ -26,6 +28,14 @@ def make_client(tmp_path):
         folder = project / task / "competency_question"
         folder.mkdir(parents=True)
         (folder / cqname).write_text(contents, encoding="utf-8")
+    gold_term = project / "CQ2Term" / "00_gold_standard" / "alpha"
+    gold_term.mkdir(parents=True)
+    (gold_term / "cq_to_terms_alpha.json").write_text('[{"id":"C1"}]', encoding="utf-8")
+    gold_onto = project / "CQ2Onto" / "00_gold_standard" / "alpha"
+    (gold_onto / "ontology").mkdir(parents=True)
+    (gold_onto / "axioms").mkdir()
+    (gold_onto / "ontology" / "sub_alpha.owl").write_text('<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>', encoding="utf-8")
+    (gold_onto / "axioms" / "alpha_axiom_gold.json").write_text('{"axioms":[]}', encoding="utf-8")
     app = create_app(Settings(project, tmp_path / "data"), lambda settings, readiness: FakeWorker())
     return TestClient(app), app
 
@@ -95,3 +105,30 @@ def test_upload_errors_are_json_and_run_events_are_available(tmp_path):
         response = client.post(f"/api/runs/{run['id']}/items/{item_id}/upload", files={"file": ("bad.txt", b"bad")})
         assert response.status_code == 400 and response.json()["detail"]
         assert client.get(f"/api/runs/{run['id']}/events").status_code == 200
+
+
+def test_failure_events_do_not_expose_workspace_paths(tmp_path):
+    client, app = make_client(tmp_path)
+    with client:
+        agent = client.post("/api/agents", json={"name": "Agent"}).json()
+        model = client.post(f"/api/agents/{agent['id']}/models", json={"name": "Local", "model_id": "qwen"}).json()
+        run = client.post("/api/runs", json={"agent_id": agent["id"], "model_id": model["id"],
+                                             "items": [{"task": "cq2term", "domain": "alpha"}]}).json()
+        item_id = run["items"][0]["id"]
+        prediction = json.dumps([{"id": "C1", "class": [], "property": []}]).encode()
+        client.post(f"/api/runs/{run['id']}/items/{item_id}/upload", files={"file": ("prediction.json", prediction)})
+        client.post(f"/api/runs/{run['id']}/start")
+
+        class FailingEvaluator:
+            def evaluate_item(self, run, item, event_sink):
+                raise EvaluationStageError("predict", 1, tmp_path / "private" / "stdout.log", tmp_path / "private" / "stderr.log")
+
+        class Ready:
+            def is_ready(self):
+                return True
+
+        worker = EvaluationWorker(app.state.settings.database_path, app.state.settings.runs_root, Ready(), FailingEvaluator())
+        assert worker.process_one()
+        events = client.get(f"/api/runs/{run['id']}/events").json()
+        assert str(tmp_path) not in json.dumps(events)
+        assert all("stdout.log" not in event["payload_json"] for event in events)

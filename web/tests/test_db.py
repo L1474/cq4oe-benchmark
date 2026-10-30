@@ -66,6 +66,47 @@ def test_v4_migration_splits_legacy_model_shared_by_multiple_agents(tmp_path):
             (model["agent_id"], model["id"]) for model in models
         ]
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_legacy_migration_paths_reach_agent_model_fk_schema(tmp_path, version):
+    path = tmp_path / f"v{version}.sqlite3"
+    runs_extra = ", evaluator_version TEXT NOT NULL DEFAULT 'unknown', gold_fingerprint TEXT NOT NULL DEFAULT ''" if version >= 2 else ""
+    with connect_database(path) as connection:
+        connection.executescript(f"""
+            CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at TEXT NOT NULL);
+            CREATE TABLE agents(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',config_json TEXT NOT NULL DEFAULT '{{}}',created_at TEXT NOT NULL,
+                UNIQUE(user_id,id));
+            CREATE TABLE models(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,name TEXT NOT NULL,provider TEXT NOT NULL,
+                model_id TEXT NOT NULL,config_json TEXT NOT NULL DEFAULT '{{}}',created_at TEXT NOT NULL,UNIQUE(user_id,id));
+            CREATE TABLE runs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,agent_id TEXT NOT NULL,model_id TEXT NOT NULL,
+                status TEXT NOT NULL,config_json TEXT NOT NULL,created_at TEXT NOT NULL,started_at TEXT,finished_at TEXT,
+                run_path TEXT NOT NULL{runs_extra},UNIQUE(user_id,id));
+            CREATE TABLE run_items(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,user_id TEXT NOT NULL,task TEXT NOT NULL,
+                domain TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',created_at TEXT NOT NULL,started_at TEXT,finished_at TEXT,
+                UNIQUE(run_id,task,domain),UNIQUE(user_id,id));
+            CREATE TABLE artifacts(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,run_id TEXT NOT NULL,run_item_id TEXT,
+                category TEXT NOT NULL,relative_path TEXT NOT NULL,media_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,name TEXT NOT NULL,created_at TEXT NOT NULL);
+            CREATE TABLE metrics(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,run_id TEXT NOT NULL,run_item_id TEXT NOT NULL,
+                dimension TEXT NOT NULL,layer TEXT NOT NULL,metric_name TEXT NOT NULL,scope TEXT NOT NULL,value REAL,
+                count INTEGER,unit TEXT,scope_json TEXT,created_at TEXT NOT NULL);
+            CREATE TABLE run_events(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,run_id TEXT NOT NULL,event_type TEXT NOT NULL,
+                payload_json TEXT NOT NULL DEFAULT '{{}}',created_at TEXT NOT NULL);
+            PRAGMA user_version={version};
+        """)
+    initialize_database(path)
+    with connect_database(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    from web.repositories import create_agent, create_model, create_run
+    agent_a = create_agent(path, user_id="local", name="A")
+    agent_b = create_agent(path, user_id="local", name="B")
+    model_b = create_model(path, user_id="local", agent_id=agent_b["id"], name="B", provider="ollama", model_id="b")
+    with pytest.raises(sqlite3.IntegrityError):
+        create_run(path, user_id="local", agent_id=agent_a["id"], model_id=model_b["id"],
+                   items=[], config={}, runs_root=tmp_path / f"runs{version}")
 def test_run_items_are_unique_by_run_task_and_domain(tmp_path):
     from web.repositories import create_agent, create_model
 

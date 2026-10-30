@@ -11,6 +11,7 @@ from web.services.commands import build_cq2onto_commands, build_cq2term_command
 from web.services.evaluator import run_stage
 from web.services.metrics import extract_cq2onto_metrics, extract_cq2term_metrics
 from web.services.artifacts import store_artifact
+from web.services.privacy import redact_paths
 from web.types import RunItem, RunPaths, EvaluationStage
 
 
@@ -63,6 +64,7 @@ class EvaluationWorker:
             connection.close()
 
     def _record_event(self, run, item, event):
+        event = redact_paths(event)
         payload = dict(event)
         stage = payload.pop("stage", None)
         status = payload.pop("status", None)
@@ -98,7 +100,7 @@ class EvaluationWorker:
                 except Exception as artifact_error:
                     exc = RuntimeError(f"{exc}; output indexing failed: {artifact_error}")
                 add_event(self.db_path, user_id=run["user_id"], run_id=run["id"], event_type="item_failed",
-                          payload={"item_id": item["id"], "error": str(exc)})
+                          payload={"item_id": item["id"], "error": redact_paths(str(exc))})
                 status = "failed"
             with connect_database(self.db_path) as conn:
                 conn.execute("UPDATE run_items SET status=?, finished_at=datetime('now') WHERE id=?", (status, item["id"]))

@@ -13,6 +13,8 @@ class ModelReadinessService:
         self._ready = threading.Event()
         self._stop = threading.Event()
         self._thread = None
+        self._response_lock = threading.Lock()
+        self._active_response = None
         self.error = None
 
     def is_ready(self) -> bool:
@@ -27,6 +29,10 @@ class ModelReadinessService:
 
     def stop(self, timeout=None) -> None:
         self._stop.set()
+        with self._response_lock:
+            response = self._active_response
+        if response is not None:
+            response.close()
         if self._thread:
             self._thread.join(timeout)
 
@@ -37,13 +43,33 @@ class ModelReadinessService:
         with urlopen(request, timeout=10) as response:
             return response.read()
 
+    def _pull_model(self) -> None:
+        request = Request(self.ollama_url + "/api/pull",
+                          data=json.dumps({"name": self.model, "stream": True}).encode(),
+                          headers={"Content-Type": "application/json"})
+        response = urlopen(request, timeout=10)
+        with self._response_lock:
+            self._active_response = response
+        try:
+            response.fp.raw._sock.settimeout(None)
+            for _line in response:
+                if self._stop.is_set():
+                    return
+        finally:
+            with self._response_lock:
+                if self._active_response is response:
+                    self._active_response = None
+            response.close()
+
     def _check_loop(self):
         while not self._stop.is_set():
             try:
                 tags = json.loads(self._request("/api/tags"))
                 models = {entry.get("name", "").split(":")[0] for entry in tags.get("models", [])}
                 if self.model not in models:
-                    self._request("/api/pull", {"name": self.model, "stream": False})
+                    self._pull_model()
+                    if self._stop.is_set():
+                        return
                     tags = json.loads(self._request("/api/tags"))
                     models = {entry.get("name", "").split(":")[0] for entry in tags.get("models", [])}
                 if self.model in models:

@@ -17,6 +17,48 @@ class RunServiceError(ValueError):
     pass
 
 
+def _fingerprint_files(files: list[tuple[str, Path]]) -> str:
+    digest = hashlib.sha256()
+    for label, path in sorted(files, key=lambda entry: entry[0]):
+        digest.update(label.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _provenance(project_root: Path, items: list[dict]) -> tuple[str, str]:
+    source_root = Path(__file__).resolve().parents[2]
+    evaluator_files = [
+        (path.relative_to(source_root).as_posix(), path)
+        for path in (source_root / "web" / "services").glob("*.py")
+    ]
+    evaluator_files += [
+        (path.relative_to(source_root).as_posix(), path)
+        for path in (source_root / "web" / "domain").glob("*.py")
+    ]
+    for item in items:
+        task_root = Path(project_root) / ("CQ2Term" if item["task"] == "cq2term" else "CQ2Onto") / "scripts"
+        if task_root.is_dir():
+            evaluator_files.extend((path.relative_to(project_root).as_posix(), path)
+                                   for path in task_root.rglob("*.py") if path.is_file())
+    evaluator_version = "sha256:" + _fingerprint_files(evaluator_files)
+
+    gold_files = []
+    for item in items:
+        domain = item["domain"]
+        if item["task"] == "cq2term":
+            paths = [Path(project_root) / "CQ2Term" / "00_gold_standard" / domain / f"cq_to_terms_{domain}.json"]
+        else:
+            base = Path(project_root) / "CQ2Onto" / "00_gold_standard" / domain
+            paths = [base / "ontology" / f"sub_{domain}.owl", base / "axioms" / f"{domain}_axiom_gold.json"]
+        for path in paths:
+            if not path.is_file():
+                raise RunServiceError(f"Missing gold input required for provenance: {path.name}")
+            gold_files.append((path.relative_to(project_root).as_posix(), path))
+    return evaluator_version, _fingerprint_files(gold_files)
+
+
 class RunService:
     def __init__(self, db_path: Path, runs_root: Path, project_root: Path, max_upload_bytes: int = 50 * 1024 * 1024):
         self.db_path = Path(db_path)
@@ -52,8 +94,10 @@ class RunService:
             raise RunServiceError("Agent not found.")
         if model is None or model["agent_id"] != agent_id:
             raise RunServiceError("Model does not belong to the selected Agent.")
+        evaluator_version, gold_fingerprint = _provenance(self.project_root, prepared)
         run = create_run(self.db_path, user_id=user_id, agent_id=agent_id, model_id=model_id,
-                         items=prepared, config=config, runs_root=self.runs_root, initial_status="draft")
+                         items=prepared, config=config, runs_root=self.runs_root, initial_status="draft",
+                         evaluator_version=evaluator_version, gold_fingerprint=gold_fingerprint)
         return run["id"]
 
     def _item(self, run_id: str, item_id: str) -> tuple[dict, dict]:

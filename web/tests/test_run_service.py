@@ -14,11 +14,19 @@ def setup_service(tmp_path):
     (cq_dir / "alpha_cq2term_cqs.json").write_text(
         '[{"id":"CQ1","value":"One?"},{"id":"CQ2","value":"Two?"}]', encoding="utf-8"
     )
+    gold_term = project / "CQ2Term" / "00_gold_standard" / "alpha"
+    gold_term.mkdir(parents=True)
+    (gold_term / "cq_to_terms_alpha.json").write_text('[{"id":"CQ1"}]', encoding="utf-8")
     onto_dir = project / "CQ2Onto" / "competency_question"
     onto_dir.mkdir(parents=True)
     (onto_dir / "alpha_cq2onto_cqs.json").write_text(
         '[{"id":"OCQ1","value":"Ontology?"}]', encoding="utf-8"
     )
+    gold_onto = project / "CQ2Onto" / "00_gold_standard" / "alpha"
+    (gold_onto / "ontology").mkdir(parents=True)
+    (gold_onto / "axioms").mkdir()
+    (gold_onto / "ontology" / "sub_alpha.owl").write_text('<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>', encoding="utf-8")
+    (gold_onto / "axioms" / "alpha_axiom_gold.json").write_text('{"axioms":[]}', encoding="utf-8")
     db = tmp_path / "app.sqlite3"
     initialize_database(db)
     agent = create_agent(db, user_id="local", name="Agent")
@@ -108,3 +116,17 @@ def test_run_service_rejects_model_owned_by_another_agent(tmp_path):
                            provider="ollama", model_id="other")
     with pytest.raises(RunServiceError, match="does not belong"):
         service.create_draft_run("local", agent_a["id"], model_b["id"], [{"task": "cq2term", "domain": "alpha"}], {})
+
+
+def test_draft_persists_evaluator_and_gold_input_fingerprints(tmp_path):
+    service, db, agent, model, _ = setup_service(tmp_path)
+    items = [{"task": "cq2term", "domain": "alpha"}]
+    first = service.create_draft_run("local", agent["id"], model["id"], items, {})
+    first_row = get_run(db, user_id="local", run_id=first)
+    assert first_row["evaluator_version"].startswith("sha256:") and len(first_row["gold_fingerprint"]) == 64
+    gold = service.project_root / "CQ2Term" / "00_gold_standard" / "alpha" / "cq_to_terms_alpha.json"
+    gold.write_text('[{"id":"CQ1"},{"id":"CQ2"}]', encoding="utf-8")
+    second = service.create_draft_run("local", agent["id"], model["id"], items, {})
+    second_row = get_run(db, user_id="local", run_id=second)
+    assert second_row["evaluator_version"] == first_row["evaluator_version"]
+    assert second_row["gold_fingerprint"] != first_row["gold_fingerprint"]

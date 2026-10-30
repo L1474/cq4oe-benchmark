@@ -260,17 +260,17 @@ def initialize_database(db_path: Path) -> None:
             raise RuntimeError(f"database version {version} is newer than supported {SCHEMA_VERSION}")
         if version == 0:
             connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 5;\nCOMMIT;")
-        elif version == 1:
+            version = 5
+        if version == 1:
             connection.executescript(_MIGRATE_1_TO_2)
+            version = 2
+        if version == 2:
             connection.executescript(_MIGRATE_2_TO_3)
+            version = 3
+        if version == 3:
             connection.executescript(_MIGRATE_3_TO_4)
-        elif version == 2:
-            connection.executescript(_MIGRATE_2_TO_3)
-            connection.executescript(_MIGRATE_3_TO_4)
-        elif version == 3:
-            connection.executescript(_MIGRATE_3_TO_4)
-            _migrate_4_to_5(connection)
-        elif version == 4:
+            version = 4
+        if version == 4:
             _migrate_4_to_5(connection)
         connection.execute(
             "INSERT OR IGNORE INTO users (id, name, created_at) VALUES (?, ?, ?)",

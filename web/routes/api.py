@@ -13,6 +13,7 @@ from web.domain.catalog import get_domain_detail, list_domains
 from web.repositories import (add_event, create_agent, create_model, get_run, list_agents,
                               list_models, list_runs, resolve_artifact_path)
 from web.services.run_service import RunServiceError
+from web.services.privacy import redact_paths
 
 api_router = APIRouter()
 
@@ -83,6 +84,16 @@ def _public_run(run):
         confirmation = item.pop("confirmation_json", None)
         if confirmation:
             item["confirmed_cq_ids"] = json.loads(confirmation)
+    result["events"] = [_public_event(event) for event in result.get("events", [])]
+    return result
+
+
+def _public_event(event):
+    result = dict(event)
+    try:
+        result["payload_json"] = json.dumps(redact_paths(json.loads(result.get("payload_json", "{}"))), sort_keys=True)
+    except (TypeError, json.JSONDecodeError):
+        result["payload_json"] = redact_paths(str(result.get("payload_json", "{}")))
     return result
 
 
@@ -253,7 +264,7 @@ def run_events(request: Request, run_id: str):
     run = get_run(_state(request).settings.database_path, user_id="local", run_id=run_id)
     if not run:
         raise HTTPException(404, "Run not found")
-    return run["events"]
+    return [_public_event(event) for event in run["events"]]
 
 
 @api_router.get("/artifacts/{artifact_id}")

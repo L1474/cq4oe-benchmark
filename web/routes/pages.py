@@ -103,6 +103,14 @@ def run_detail_page(request: Request, run_id: str):
         model = connection.execute("SELECT name,model_id,provider FROM models WHERE id=? AND user_id='local'", (run["model_id"],)).fetchone()
     for artifact in run["artifacts"]:
         artifact["download_url"] = f"/api/runs/{run_id}/artifacts/{artifact['id']}"
+        item = next((item for item in run["items"] if item["id"] == artifact["run_item_id"]), None)
+        if item:
+            prefix = f"items/{item['id']}/"
+            relative = artifact["relative_path"]
+            within_item = relative[len(prefix):] if relative.startswith(prefix) else f"{artifact['category']}/{artifact['name']}"
+            artifact["context_label"] = f"{item['task'].upper()} / {item['domain']} · {within_item}"
+        else:
+            artifact["context_label"] = f"Run · {artifact['category']}/{artifact['name']}"
     reports = []
     report_artifacts = [artifact for artifact in run["artifacts"] if artifact["name"].lower() == "report.md"]
     for index, report_artifact in enumerate(report_artifacts, start=1):

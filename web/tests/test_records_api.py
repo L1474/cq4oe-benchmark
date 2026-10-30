@@ -5,9 +5,11 @@ from web.repositories import add_artifact, create_agent, create_model, create_ru
 from web.tests.test_api import make_client
 
 
-def _record(app, *, agent, model, domain, status="completed", config=None, created_at=None):
+def _record(app, *, agent, model, domain, status="completed", config=None, created_at=None,
+            item_gold="item-gold"):
     run = create_run(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
-                     model_id=model["id"], items=[{"task": "cq2onto", "domain": domain}],
+                     model_id=model["id"], items=[{"task": "cq2onto", "domain": domain,
+                                                    "gold_fingerprint": item_gold}],
                      config=config or {}, runs_root=app.state.settings.runs_root,
                      evaluator_version="eval", gold_fingerprint="gold", initial_status=status)
     if created_at:
@@ -90,7 +92,7 @@ def test_compare_validates_count_and_returns_run_scoped_metrics(tmp_path):
         assert result.json()["runs"][0]["config"] == {}
 
 
-def test_explicit_compare_rejects_incompatible_evaluator_or_gold_fingerprint(tmp_path):
+def test_explicit_compare_rejects_incompatible_evaluator_or_shared_gold_fingerprint(tmp_path):
     client, app = make_client(tmp_path)
     with client:
         agent = create_agent(app.state.settings.database_path, user_id="local", name="A")
@@ -99,7 +101,7 @@ def test_explicit_compare_rejects_incompatible_evaluator_or_gold_fingerprint(tmp
         first = _record(app, agent=agent, model=model, domain="alpha")
         second = _record(app, agent=agent, model=model, domain="alpha")
         with connect_database(app.state.settings.database_path) as connection:
-            connection.execute("UPDATE runs SET gold_fingerprint='different' WHERE id=?", (second["id"],))
+            connection.execute("UPDATE run_items SET gold_fingerprint='different' WHERE run_id=?", (second["id"],))
 
         response = client.post("/api/runs/compare", json={"run_ids": [first["id"], second["id"]]})
 
@@ -114,8 +116,8 @@ def test_explicit_compare_accepts_matching_multi_task_runs(tmp_path):
         model = create_model(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
                              name="M", provider="ollama", model_id="m")
         runs = [create_run(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
-                           model_id=model["id"], items=[{"task": "cq2term", "domain": "alpha"},
-                                                          {"task": "cq2onto", "domain": "alpha"}],
+                           model_id=model["id"], items=[{"task": "cq2term", "domain": "alpha", "gold_fingerprint": "term-gold"},
+                                                          {"task": "cq2onto", "domain": "alpha", "gold_fingerprint": "onto-gold"}],
                            config={}, runs_root=app.state.settings.runs_root,
                            evaluator_version="eval", gold_fingerprint="gold", initial_status="completed")
                 for _ in range(2)]
@@ -124,6 +126,76 @@ def test_explicit_compare_accepts_matching_multi_task_runs(tmp_path):
 
         assert response.status_code == 200
         assert response.json()["intersection_count"] == 1
+
+
+def test_actual_runs_compare_on_shared_item_gold_provenance(tmp_path):
+    client, app = make_client(tmp_path)
+    project = app.state.settings.project_root
+    for domain in ("beta", "gamma"):
+        cq = project / "CQ2Term" / "competency_question" / f"{domain}_cq2term_cqs.json"
+        cq.write_text('[{"id":"C1","value":"one?"}]', encoding="utf-8")
+        gold = project / "CQ2Term" / "00_gold_standard" / domain
+        gold.mkdir(parents=True)
+        (gold / f"cq_to_terms_{domain}.json").write_text('[{"id":"C1"}]', encoding="utf-8")
+    with client:
+        agent = client.post("/api/agents", json={"name": "A"}).json()
+        model = client.post(f"/api/agents/{agent['id']}/models", json={"name": "M", "model_id": "m"}).json()
+
+        def draft(domains):
+            return client.post("/api/runs", json={"agent_id": agent["id"], "model_id": model["id"],
+                "items": [{"task": "cq2term", "domain": domain} for domain in domains]}).json()
+
+        first = draft(("alpha", "beta"))
+        second = draft(("beta", "gamma"))
+        assert first["gold_fingerprint"] != second["gold_fingerprint"]
+        assert all(item["gold_fingerprint"] for item in first["items"] + second["items"])
+        accepted = client.post("/api/runs/compare", json={"run_ids": [first["id"], second["id"]]})
+        assert accepted.status_code == 200
+        assert accepted.json()["domains"] == ["beta"]
+
+        beta_gold = project / "CQ2Term" / "00_gold_standard" / "beta" / "cq_to_terms_beta.json"
+        beta_gold.write_text('[{"id":"C1","class":["changed"]}]', encoding="utf-8")
+        changed = draft(("beta", "gamma"))
+        rejected = client.post("/api/runs/compare", json={"run_ids": [first["id"], changed["id"]]})
+        assert rejected.status_code == 422
+        assert "gold" in rejected.json()["detail"].lower()
+
+
+def test_shared_item_compare_does_not_change_evaluator_version_with_item_count(tmp_path):
+    client, app = make_client(tmp_path)
+    project = app.state.settings.project_root
+    scripts = project / "CQ2Term" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "evaluator.py").write_text("VERSION = 1", encoding="utf-8")
+    cq = project / "CQ2Term" / "competency_question" / "beta_cq2term_cqs.json"
+    cq.write_text('[{"id":"C1","value":"one?"}]', encoding="utf-8")
+    gold = project / "CQ2Term" / "00_gold_standard" / "beta"
+    gold.mkdir(parents=True)
+    (gold / "cq_to_terms_beta.json").write_text('[{"id":"C1"}]', encoding="utf-8")
+    with client:
+        agent = client.post("/api/agents", json={"name": "A"}).json()
+        model = client.post(f"/api/agents/{agent['id']}/models", json={"name": "M", "model_id": "m"}).json()
+        body = {"agent_id": agent["id"], "model_id": model["id"]}
+        broad = client.post("/api/runs", json={**body, "items": [
+            {"task": "cq2term", "domain": "alpha"}, {"task": "cq2term", "domain": "beta"}]}).json()
+        narrow = client.post("/api/runs", json={**body, "items": [
+            {"task": "cq2term", "domain": "beta"}]}).json()
+
+        assert broad["evaluator_version"] == narrow["evaluator_version"]
+        assert client.post("/api/runs/compare", json={"run_ids": [broad["id"], narrow["id"]]}).status_code == 200
+
+
+def test_matching_aggregate_hash_does_not_substitute_missing_item_fingerprints(tmp_path):
+    client, app = make_client(tmp_path)
+    with client:
+        agent = create_agent(app.state.settings.database_path, user_id="local", name="A")
+        model = create_model(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
+                             name="M", provider="ollama", model_id="m")
+        first = _record(app, agent=agent, model=model, domain="alpha", item_gold=None)
+        second = _record(app, agent=agent, model=model, domain="alpha", item_gold=None)
+        response = client.post("/api/runs/compare", json={"run_ids": [first["id"], second["id"]]})
+        assert response.status_code == 422
+        assert "gold" in response.json()["detail"].lower()
 
 
 def test_run_detail_lists_artifacts_by_id_without_paths(tmp_path):

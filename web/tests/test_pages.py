@@ -107,5 +107,34 @@ def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
         assert 'id="report-1-class"' in detail.text
         assert "Second complete report." in detail.text
         assert 'href="#report-2-property"' in detail.text
+        assert "CQ2ONTO / alpha" in detail.text
         assert '<pre>{}</pre>' in detail.text
         assert client.get(f"/compare?run_ids={runs[0]['id']},{runs[1]['id']}").status_code == 200
+
+
+def test_artifact_list_distinguishes_duplicate_names_by_item(tmp_path):
+    from web.repositories import add_artifact, create_agent, create_model, create_run
+
+    client = make_page_client(tmp_path)
+    app = client.app
+    with client:
+        agent = create_agent(app.state.settings.database_path, user_id="local", name="A")
+        model = create_model(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
+                             name="M", provider="ollama", model_id="m")
+        run = create_run(app.state.settings.database_path, user_id="local", agent_id=agent["id"],
+                         model_id=model["id"], items=[{"task": "cq2term", "domain": "alpha"},
+                                                        {"task": "cq2onto", "domain": "alpha"}],
+                         config={}, runs_root=app.state.settings.runs_root)
+        for item in run["items"]:
+            relative = f"items/{item['id']}/results/summary/report.md"
+            path = app.state.settings.runs_root / run["id"] / relative
+            path.parent.mkdir(parents=True)
+            path.write_text(f"# {item['task']}", encoding="utf-8")
+            add_artifact(app.state.settings.database_path, user_id="local", run_id=run["id"],
+                         run_item_id=item["id"], category="results", relative_path=relative,
+                         media_type="text/markdown", size_bytes=8, sha256="x", name="report.md")
+
+        detail = client.get(f"/runs/{run['id']}")
+
+        assert "CQ2TERM / alpha · results/summary/report.md" in detail.text
+        assert "CQ2ONTO / alpha · results/summary/report.md" in detail.text

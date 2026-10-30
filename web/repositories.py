@@ -67,7 +67,8 @@ def create_run(db_path: Path, *, user_id: str, agent_id: str, model_id: str, ite
         records.append({"id": item_id, "run_id": run_id, "user_id": user_id, "task": item["task"],
                         "domain": item["domain"], "status": "draft" if initial_status == "draft" else "queued", "created_at": _now(),
                         "started_at": None, "finished_at": None, "input_path": None,
-                        "confirmation_json": None, "bundle_sha256": item.get("bundle_sha256")})
+                        "confirmation_json": None, "bundle_sha256": item.get("bundle_sha256"),
+                        "gold_fingerprint": item.get("gold_fingerprint")})
     try:
         for directory in (run_path, run_path / "items"):
             directory.mkdir(parents=True, exist_ok=True)
@@ -76,7 +77,7 @@ def create_run(db_path: Path, *, user_id: str, agent_id: str, model_id: str, ite
                 (run_path / "items" / item["id"] / category).mkdir(parents=True, exist_ok=True)
         with connect_database(db_path) as connection:
             connection.execute("INSERT INTO runs (id, user_id, agent_id, model_id, status, config_json, created_at, started_at, finished_at, run_path, evaluator_version, gold_fingerprint) VALUES (:id, :user_id, :agent_id, :model_id, :status, :config_json, :created_at, :started_at, :finished_at, :run_path, :evaluator_version, :gold_fingerprint)", run)
-            connection.executemany("INSERT INTO run_items (id, run_id, user_id, task, domain, status, created_at, started_at, finished_at, input_path, confirmation_json, bundle_sha256) VALUES (:id, :run_id, :user_id, :task, :domain, :status, :created_at, :started_at, :finished_at, :input_path, :confirmation_json, :bundle_sha256)", records)
+            connection.executemany("INSERT INTO run_items (id, run_id, user_id, task, domain, status, created_at, started_at, finished_at, input_path, confirmation_json, bundle_sha256, gold_fingerprint) VALUES (:id, :run_id, :user_id, :task, :domain, :status, :created_at, :started_at, :finished_at, :input_path, :confirmation_json, :bundle_sha256, :gold_fingerprint)", records)
             connection.execute("INSERT INTO run_events (id, user_id, run_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                                (str(uuid4()), user_id, run_id, initial_status, "{}", created_at))
     except BaseException:

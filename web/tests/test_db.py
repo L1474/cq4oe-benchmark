@@ -23,7 +23,8 @@ def test_initialization_is_idempotent_and_enforces_run_item_constraints(tmp_path
             "artifacts", "metrics", "run_events", "run_stages",
         }.issubset(tables)
         assert connection.execute("SELECT count(*) FROM users").fetchone()[0] == 1
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert "gold_fingerprint" in [row[1] for row in connection.execute("PRAGMA table_info(run_items)")]
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
                 "INSERT INTO run_items (id, run_id, user_id, task, domain) "
@@ -46,6 +47,8 @@ def test_v4_migration_splits_legacy_model_shared_by_multiple_agents(tmp_path):
                 status TEXT NOT NULL,config_json TEXT NOT NULL,created_at TEXT NOT NULL,started_at TEXT,finished_at TEXT,
                 run_path TEXT NOT NULL,evaluator_version TEXT NOT NULL DEFAULT 'unknown',gold_fingerprint TEXT NOT NULL DEFAULT '',
                 UNIQUE(user_id,id));
+            CREATE TABLE run_items(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,user_id TEXT NOT NULL,task TEXT NOT NULL,
+                domain TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL);
             PRAGMA user_version=4;
         """)
         connection.execute("INSERT INTO users VALUES ('local','Local','now')")
@@ -98,7 +101,7 @@ def test_legacy_migration_paths_reach_agent_model_fk_schema(tmp_path, version):
         """)
     initialize_database(path)
     with connect_database(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     from web.repositories import create_agent, create_model, create_run
     agent_a = create_agent(path, user_id="local", name="A")
@@ -129,3 +132,23 @@ def test_run_items_are_unique_by_run_task_and_domain(tmp_path):
                 "INSERT INTO run_items (id, run_id, user_id, task, domain, status, created_at) "
                 "VALUES ('item-2', 'run-1', 'local', 'cq2term', 'd', 'queued', '2026-01-01T00:00:00+00:00')"
             )
+
+
+def test_v5_migration_preserves_items_and_marks_gold_provenance_unknown(tmp_path):
+    path = tmp_path / "v5.sqlite3"
+    with connect_database(path) as connection:
+        connection.executescript("""
+            CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL);
+            INSERT INTO users VALUES ('local','Local','now');
+            CREATE TABLE run_items (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, user_id TEXT NOT NULL,
+                task TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
+            INSERT INTO run_items VALUES ('item-1','run-1','local','cq2term','alpha','completed','now');
+            PRAGMA user_version=5;
+        """)
+
+    initialize_database(path)
+
+    with connect_database(path) as connection:
+        item = connection.execute("SELECT * FROM run_items WHERE id='item-1'").fetchone()
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert item["gold_fingerprint"] is None

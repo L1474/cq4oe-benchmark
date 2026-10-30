@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def connect_database(db_path: Path) -> sqlite3.Connection:
@@ -72,6 +72,7 @@ CREATE TABLE run_items (
     input_path TEXT,
     confirmation_json TEXT,
     bundle_sha256 TEXT,
+    gold_fingerprint TEXT,
     UNIQUE(run_id, task, domain),
     UNIQUE(user_id, id),
     UNIQUE(user_id, run_id, id),
@@ -193,6 +194,13 @@ PRAGMA user_version = 4;
 COMMIT;
 """
 
+_MIGRATE_5_TO_6 = """
+BEGIN;
+ALTER TABLE run_items ADD COLUMN gold_fingerprint TEXT;
+PRAGMA user_version = 6;
+COMMIT;
+"""
+
 
 def _migrate_4_to_5(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA foreign_keys = OFF")
@@ -259,8 +267,8 @@ def initialize_database(db_path: Path) -> None:
         if version > SCHEMA_VERSION:
             raise RuntimeError(f"database version {version} is newer than supported {SCHEMA_VERSION}")
         if version == 0:
-            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 5;\nCOMMIT;")
-            version = 5
+            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 6;\nCOMMIT;")
+            version = 6
         if version == 1:
             connection.executescript(_MIGRATE_1_TO_2)
             version = 2
@@ -272,6 +280,9 @@ def initialize_database(db_path: Path) -> None:
             version = 4
         if version == 4:
             _migrate_4_to_5(connection)
+            version = 5
+        if version == 5:
+            connection.executescript(_MIGRATE_5_TO_6)
         connection.execute(
             "INSERT OR IGNORE INTO users (id, name, created_at) VALUES (?, ?, ?)",
             ("local", "Local User", "1970-01-01T00:00:00+00:00"),

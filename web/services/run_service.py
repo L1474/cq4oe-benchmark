@@ -27,7 +27,7 @@ def _fingerprint_files(files: list[tuple[str, Path]]) -> str:
     return digest.hexdigest()
 
 
-def _provenance(project_root: Path, items: list[dict]) -> tuple[str, str]:
+def _provenance(project_root: Path, items: list[dict]) -> tuple[str, str, dict[tuple[str, str], str]]:
     source_root = Path(__file__).resolve().parents[2]
     evaluator_files = [
         (path.relative_to(source_root).as_posix(), path)
@@ -37,14 +37,15 @@ def _provenance(project_root: Path, items: list[dict]) -> tuple[str, str]:
         (path.relative_to(source_root).as_posix(), path)
         for path in (source_root / "web" / "domain").glob("*.py")
     ]
-    for item in items:
-        task_root = Path(project_root) / ("CQ2Term" if item["task"] == "cq2term" else "CQ2Onto") / "scripts"
+    for task in {item["task"] for item in items}:
+        task_root = Path(project_root) / ("CQ2Term" if task == "cq2term" else "CQ2Onto") / "scripts"
         if task_root.is_dir():
             evaluator_files.extend((path.relative_to(project_root).as_posix(), path)
                                    for path in task_root.rglob("*.py") if path.is_file())
     evaluator_version = "sha256:" + _fingerprint_files(evaluator_files)
 
     gold_files = []
+    item_fingerprints = {}
     for item in items:
         domain = item["domain"]
         if item["task"] == "cq2term":
@@ -52,11 +53,14 @@ def _provenance(project_root: Path, items: list[dict]) -> tuple[str, str]:
         else:
             base = Path(project_root) / "CQ2Onto" / "00_gold_standard" / domain
             paths = [base / "ontology" / f"sub_{domain}.owl", base / "axioms" / f"{domain}_axiom_gold.json"]
+        item_files = []
         for path in paths:
             if not path.is_file():
                 raise RunServiceError(f"Missing gold input required for provenance: {path.name}")
-            gold_files.append((path.relative_to(project_root).as_posix(), path))
-    return evaluator_version, _fingerprint_files(gold_files)
+            item_files.append((path.relative_to(project_root).as_posix(), path))
+        gold_files.extend(item_files)
+        item_fingerprints[(item["task"], domain)] = _fingerprint_files(item_files)
+    return evaluator_version, _fingerprint_files(gold_files), item_fingerprints
 
 
 class RunService:
@@ -96,7 +100,9 @@ class RunService:
             model = conn.execute("SELECT agent_id FROM models WHERE id=? AND user_id=?", (model_id, user_id)).fetchone()
         if model is None or model["agent_id"] != agent_id:
             raise RunServiceError("Model does not belong to the selected Agent.")
-        evaluator_version, gold_fingerprint = _provenance(self.project_root, prepared)
+        evaluator_version, gold_fingerprint, item_fingerprints = _provenance(self.project_root, prepared)
+        for item in prepared:
+            item["gold_fingerprint"] = item_fingerprints[(item["task"], item["domain"])]
         run = create_run(self.db_path, user_id=user_id, agent_id=agent_id, model_id=model_id,
                          items=prepared, config=config, runs_root=self.runs_root, initial_status="draft",
                          evaluator_version=evaluator_version, gold_fingerprint=gold_fingerprint)

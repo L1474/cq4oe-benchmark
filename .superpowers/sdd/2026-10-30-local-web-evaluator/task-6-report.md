@@ -26,3 +26,18 @@ The detail page shows item status, CQ confirmations and package fingerprint, con
 - Playwright desktop (1280x800) and mobile (390x700) review: the records page rendered server-approved green up/red down trend indicators, and the mobile table scrolled within the page without document overflow. Screenshots: `C:/Users/14742/AppData/Local/Temp/task6-records-desktop.png` and `C:/Users/14742/AppData/Local/Temp/task6-records-mobile-final.png`.
 
 The task venv initially lacked Markdown and Bleach. Pip could not use the machine's inherited SOCKS proxy without extra support, so the declared runtime packages were downloaded as official wheels and installed locally into the task venv. No repository or user pip configuration was changed.
+
+## Review Fix Round 1
+
+### RED
+
+- Real draft runs with item sets `{alpha,beta}` and `{beta,gamma}` exposed that a run-wide gold fingerprint rejects a valid shared `beta` comparison. A second test changed only `beta` gold between runs and required rejection. A missing per-item fingerprint test ensured a matching synthetic aggregate hash cannot authorize comparison.
+- A report detail test created two item artifacts both named `report.md` and required task/domain plus item-relative path in each label.
+- A real `{alpha,beta}` versus `{beta}` test with a task script showed evaluator fingerprints differed solely because the script was hashed once per item.
+
+### GREEN
+
+- Schema version 6 adds nullable `run_items.gold_fingerprint`; version-5 migration preserves existing items with unknown per-item provenance. Draft creation persists a separate hash for each task/domain's gold inputs while retaining the strict run-wide hash for default trends.
+- Manual comparison requires matching evaluator version and configuration, then compares nonempty shared task/domain items only when each has an equal, present gold fingerprint. Nonshared item gold may differ. Evaluator scripts are hashed once per task, independent of item count.
+- Artifact labels now include the owning task/domain and path within that item; duplicate report names are distinguishable.
+- Focused suite: 31 passed. Final full `web/tests` suite: **87 passed**, with one existing Starlette/AnyIO deprecation warning. `node --check web/static/app.js` and `git diff --check` passed.

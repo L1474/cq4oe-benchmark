@@ -124,12 +124,14 @@ def test_draft_persists_evaluator_and_gold_input_fingerprints(tmp_path):
     first = service.create_draft_run("local", agent["id"], model["id"], items, {})
     first_row = get_run(db, user_id="local", run_id=first)
     assert first_row["evaluator_version"].startswith("sha256:") and len(first_row["gold_fingerprint"]) == 64
+    assert len(first_row["items"][0]["gold_fingerprint"]) == 64
     gold = service.project_root / "CQ2Term" / "00_gold_standard" / "alpha" / "cq_to_terms_alpha.json"
     gold.write_text('[{"id":"CQ1"},{"id":"CQ2"}]', encoding="utf-8")
     second = service.create_draft_run("local", agent["id"], model["id"], items, {})
     second_row = get_run(db, user_id="local", run_id=second)
     assert second_row["evaluator_version"] == first_row["evaluator_version"]
     assert second_row["gold_fingerprint"] != first_row["gold_fingerprint"]
+    assert second_row["items"][0]["gold_fingerprint"] != first_row["items"][0]["gold_fingerprint"]
 
 
 def test_omitted_model_id_selects_model_owned_by_selected_agent(tmp_path):

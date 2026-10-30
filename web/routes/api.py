@@ -310,8 +310,16 @@ def compare_runs_route(request: Request, body: CompareInput):
     task_sets = [{item["task"] for item in run["items"]} for run in records]
     if len({frozenset(tasks) for tasks in task_sets}) != 1 or len({_canonical_config(run) for run in records}) != 1:
         raise HTTPException(422, "selected runs must use compatible task and configuration scopes")
-    if len({(run.get("evaluator_version"), run.get("gold_fingerprint")) for run in records}) != 1:
-        raise HTTPException(422, "selected runs must use matching evaluator and gold fingerprints")
+    if len({run.get("evaluator_version") for run in records}) != 1:
+        raise HTTPException(422, "selected runs must use matching evaluator versions")
+    item_maps = [{(item["task"], item["domain"]): item.get("gold_fingerprint") for item in run["items"]}
+                 for run in records]
+    shared_items = set.intersection(*(set(items) for items in item_maps))
+    if not shared_items:
+        raise HTTPException(422, "selected runs have no shared task/domain items")
+    if any(not all(item_map[item] for item_map in item_maps) or
+           len({item_map[item] for item_map in item_maps}) != 1 for item in shared_items):
+        raise HTTPException(422, "selected runs must use matching gold fingerprints for shared items")
     result = compare_runs(records)
     with connect_database(_state(request).settings.database_path) as connection:
         labels = {}

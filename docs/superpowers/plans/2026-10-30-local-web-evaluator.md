@@ -37,7 +37,7 @@
 - Create `web/routes/api.py` for JSON APIs and upload/download endpoints; create `web/routes/pages.py` for HTML pages.
 - Create `web/templates/` for the Agent, Run, Domain, Record, Detail, and Compare screens; create `web/static/app.css` and `web/static/app.js` for page interactions.
 - Create `web/tests/` for isolated unit, API, evaluator-adapter, and database tests using temporary directories and mocked subprocess calls.
-- Create `Dockerfile`, `docker-compose.yml`, and `docker/entrypoint.sh` for the local app image, Java runtime, Ollama model readiness, health checks, and persistent data mount.
+- Create `Dockerfile`, `docker-compose.yml`, and `docker/entrypoint.sh` for the local app image, Java runtime, background Ollama model readiness, health checks, and persistent data mount.
 - Create `.dockerignore` so Git history, old versions, existing predictions/results, caches, virtual environments, and host `data/` do not inflate the image build context.
 - Modify `requirements.txt` and `pyproject.toml` for FastAPI, Uvicorn, Jinja2, and multipart upload support; add HTTPX to the dev test dependencies for FastAPI TestClient.
 - Modify `README.md` with Docker startup, CQ package, upload, data location, and backup instructions.
@@ -276,7 +276,7 @@ Mock `subprocess.Popen` to emit stdout and stderr in chunks; assert complete tex
 
 - [ ] **Step 5: Implement stage execution and failure recording**
 
-Use one queue worker so Java, Ollama, and local embedding/cache resources are not concurrently contested. Keep one separate report path per run item so report append operations cannot mix runs. Stream stdout and stderr independently to their respective files and persist tagged event lines in `run_events`.
+Use one queue worker so Java, Ollama, and local embedding/cache resources are not concurrently contested. Leave runs queued while the embedding model is not ready; do not fail them just because the first model download is in progress. Keep one separate report path per run item so report append operations cannot mix runs. Stream stdout and stderr independently to their respective files and persist tagged event lines in `run_events`.
 
 Run with argument arrays and retain partial outputs if a process fails:
 
@@ -315,6 +315,7 @@ Commit: `git add web/services/evaluator.py web/services/metrics.py web/services/
 
 **Files:**
 - Create: `web/services/run_service.py`
+- Create: `web/services/model_readiness.py`
 - Create: `web/services/worker.py`
 - Create: `web/routes/api.py`
 - Create: `web/routes/__init__.py`
@@ -327,8 +328,9 @@ Commit: `git add web/services/evaluator.py web/services/metrics.py web/services/
 - `create_draft_run(user_id: int, agent_id: int, model_id: int | None, items: list[RunItemInput], config: dict) -> str` creates a draft run and item rows.
 - `save_item_upload(run_id: str, item_id: int, upload: UploadFile) -> ArtifactRecord` enforces configured byte limits, safe server-generated filenames, task/domain extension rules, validation, and immutable input snapshot storage.
 - `start_run(run_id: str) -> None` atomically validates all task-specific uploads/confirmations and transitions `draft -> queued`.
+- `ModelReadinessService.start() -> None` launches a background readiness check/model pull; `is_ready() -> bool` becomes true only after Ollama reports `embeddinggemma` available. The web process serves pages before this is ready, while the evaluation worker leaves jobs queued.
 - `EvaluationWorker.run_forever(stop_event: threading.Event) -> None` claims queued runs transactionally in FIFO order, executes each run item, records stage events and artifacts/metrics, and persists `completed`, `partial`, or `failed` status.
-- HTTP routes: `GET /api/catalog`; `GET /api/catalog/{task}/{domain}`; `GET /api/catalog/{task}/{domain}/bundle`; `GET/POST /api/agents`; `PATCH/DELETE /api/agents/{agent_id}`; `GET/POST /api/agents/{agent_id}/models`; `PATCH/DELETE /api/models/{model_id}`; `POST /api/runs`; `PUT /api/runs/{run_id}/items/{item_id}/confirmation`; `POST /api/runs/{run_id}/items/{item_id}/upload`; `POST /api/runs/{run_id}/start`; `GET /api/runs`; `GET /api/runs/{run_id}`; `GET /api/runs/{run_id}/events`; `GET /api/artifacts/{artifact_id}`.
+- HTTP routes: `GET /health`; `GET /api/catalog`; `GET /api/catalog/{task}/{domain}`; `GET /api/catalog/{task}/{domain}/bundle`; `GET/POST /api/agents`; `PATCH/DELETE /api/agents/{agent_id}`; `GET/POST /api/agents/{agent_id}/models`; `PATCH/DELETE /api/models/{model_id}`; `POST /api/runs`; `PUT /api/runs/{run_id}/items/{item_id}/confirmation`; `POST /api/runs/{run_id}/items/{item_id}/upload`; `POST /api/runs/{run_id}/start`; `GET /api/runs`; `GET /api/runs/{run_id}`; `GET /api/runs/{run_id}/events`; `GET /api/artifacts/{artifact_id}`.
 
 - [ ] **Step 1: Write failing run-service tests for upload and state transitions**
 
@@ -354,13 +356,13 @@ with conn:
     repository.transition_run(conn, run_id, expected="draft", new="queued")
 ```
 
-- [ ] **Step 4: Write failing worker recovery and ordering tests**
+- [ ] **Step 4: Write failing worker readiness, recovery, and ordering tests**
 
-Use a fake evaluator and temporary DB. Assert oldest queued run is claimed first, stage events persist in order, partial failure keeps completed task/domain items, and a run left `running` at startup becomes failed with an interruption event while queued work remains eligible.
+Use a fake evaluator/readiness service and temporary DB. Assert the worker leaves queued runs untouched while readiness is false, claims them once readiness becomes true, oldest queued run is claimed first, stage events persist in order, partial failure keeps completed task/domain items, and a run left `running` at startup becomes failed with an interruption event while queued work remains eligible.
 
-- [ ] **Step 5: Implement a single database-backed queue worker**
+- [ ] **Step 5: Implement readiness-gated background work**
 
-Start the daemon worker from FastAPI lifespan. On startup recover interrupted runs; on shutdown signal the worker and wait for the current subprocess to finish or terminate within a configured grace period.
+Start a model-readiness thread and the daemon run worker from FastAPI lifespan. The model thread retries Ollama startup and pulls `embeddinggemma` through `POST /api/pull`; it records ready/failed state without blocking the Web server. The run worker leaves jobs queued until `is_ready()` is true. On startup recover interrupted runs; on shutdown signal both threads and wait within the configured grace period.
 
 Claim only one queued run inside an immediate transaction, then perform evaluation outside the transaction:
 
@@ -611,8 +613,8 @@ Commit: `git add web/services/comparison.py web/routes web/templates web/static 
 **Interfaces:**
 - `docker compose up --build` serves the app on `http://127.0.0.1:8000` and bind-mounts host `./data` to `/app/data`.
 - The app container includes Python 3.10, project evaluator dependencies, and a Java runtime for HermiT.
-- Ollama runs as a Compose service with a persistent model volume; startup waits for Ollama readiness and ensures `embeddinggemma` is available before semantic evaluation is enabled.
-- The health endpoint `GET /health` reports app/database status and embedding service readiness without exposing secrets.
+- Ollama runs as a Compose service with a persistent model volume; the app starts independently and ensures `embeddinggemma` is available in a background task before semantic evaluation begins.
+- The health endpoint `GET /health` reports app/database status and embedding service readiness without exposing secrets; pages remain available while embedding readiness is `starting`.
 - README documents Docker prerequisite, first model download, CQ package download, upload/confirmation, local data location, stop/start persistence, backup, and reset instructions.
 
 - [ ] **Step 1: Add and test runtime dependency declarations**
@@ -641,7 +643,7 @@ The `.dockerignore` must exclude `.git/`, `old_version/`, `submissions/`, `leade
 
 - [ ] **Step 3: Add Compose services and persistent volumes**
 
-Define `app` and `ollama`; expose only the app port on `127.0.0.1`; persist host `./data`, SQLite, and Ollama models; pass only service URLs and paths as environment variables; add health checks and app dependency on Ollama health.
+Define `app` and `ollama`; expose only the app port on `127.0.0.1`; persist host `./data`, SQLite, and Ollama models; pass only service URLs and paths as environment variables; add health checks and make the app depend on Ollama `service_started`, not `service_healthy`, so page browsing is available during model initialization.
 
 Bind the app only to loopback and persist run files separately from the container layer:
 
@@ -656,23 +658,13 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
 ```
 
-- [ ] **Step 4: Add startup readiness and health reporting**
+- [ ] **Step 4: Add background model readiness and health reporting**
 
-Have the entrypoint wait for Ollama API readiness, pull `embeddinggemma` if absent, then exec Uvicorn. Return unhealthy from `/health` when the DB is unavailable; expose embedding readiness as a separate field so lexical-only app browsing still works during model initialization.
+Keep `docker/entrypoint.sh` limited to launching Uvicorn. In FastAPI lifespan, start `ModelReadinessService` in a background thread: retry the Ollama API, inspect `/api/tags`, and call `POST /api/pull` if `embeddinggemma` is missing. Return unhealthy from `/health` only when the DB is unavailable; report embedding readiness separately. The worker must not claim queued evaluation runs until the model is ready.
 
-Use the Ollama HTTP API because `ollama` runs in a different Compose container; bound readiness retries and exec the server so Docker signals reach Uvicorn:
+Use the Ollama HTTP API because `ollama` runs in a different Compose container; bound retries and keep the server process available immediately:
 
 ```sh
-attempt=0
-until curl --fail --silent "$OLLAMA_BASE_URL/api/tags" >/dev/null; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 60 ] || exit 1
-  sleep 2
-done
-ollama_models=$(curl --fail --silent "$OLLAMA_BASE_URL/api/tags")
-printf '%s' "$ollama_models" | grep -q 'embeddinggemma' || \
-  curl --fail --silent --show-error -X POST "$OLLAMA_BASE_URL/api/pull" \
-    -H 'Content-Type: application/json' -d '{"name":"embeddinggemma"}' -o /dev/null
 exec uvicorn web.app:app --host 0.0.0.0 --port 8000
 ```
 
@@ -694,7 +686,7 @@ Run: `docker compose build app`
 Expected: image build succeeds and `python -m pip check` reports no broken requirements.
 
 Run: `docker compose up -d app`
-Expected: `/health` becomes ready at `http://127.0.0.1:8000/health`; verify `./data` contains the SQLite database after creating an Agent, then stop Compose and confirm the same Agent remains after restart. Open the run, domain drawer, records, report, and compare pages at desktop and mobile viewport sizes and check that tables, CQ text, dialogs, and navigation remain readable without overlap.
+Expected: `/health` becomes ready at `http://127.0.0.1:8000/health` before the first model pull completes and reports embedding readiness separately; verify `./data` contains the SQLite database after creating an Agent, then stop Compose and confirm the same Agent remains after restart. Open the run, domain drawer, records, report, and compare pages at desktop and mobile viewport sizes and check that tables, CQ text, dialogs, and navigation remain readable without overlap.
 
 - [ ] **Step 8: Document launch and user workflow; run final validation**
 

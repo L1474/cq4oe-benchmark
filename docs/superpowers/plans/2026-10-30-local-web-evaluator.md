@@ -97,16 +97,16 @@ class MetricRecord:
 - Create: `web/tests/domain/test_validation.py`
 
 **Interfaces:**
-- `list_domains(project_root: Path) -> list[dict]` returns domain slug, display name, and per-task CQ counts by reading the task-specific CQ JSON files.
-- `get_domain_detail(project_root: Path, domain: str) -> dict` returns task-specific CQ IDs/questions and input requirements, never gold annotations.
-- `build_cq_bundle(project_root: Path, task: str, domain: str) -> bytes` returns a ZIP with the source CQ JSON, `manifest.json`, `README.txt`, and for CQ2Term a blank prediction JSON containing all expected IDs.
+- `list_domains(project_root: Path) -> list[dict]` returns domain slug, display name, and per-task effective unique CQ counts plus raw source counts by reading the task-specific CQ JSON files.
+- `get_domain_detail(project_root: Path, domain: str) -> dict` returns de-duplicated task-specific CQ IDs/questions, exact duplicate counts, and input requirements, never gold annotations.
+- `build_cq_bundle(project_root: Path, task: str, domain: str) -> bytes` returns a ZIP with de-duplicated `cqs.json`, `manifest.json`, `README.txt`, and for CQ2Term a blank prediction JSON containing every unique expected ID.
 - `validate_cq_term_prediction(project_root: Path, domain: str, payload: object) -> ValidationResult` verifies the list schema, unique complete expected IDs, no unknown IDs, and class/property string arrays.
 - `validate_cq2onto_confirmation(project_root: Path, domain: str, confirmed_ids: list[str]) -> ValidationResult` verifies that each current task-specific CQ ID has been confirmed exactly once.
 - Supported task identifiers are `cq2term` and `cq2onto`; domain discovery is based on `CQ2Term/competency_question/*_cq2term_cqs.json` and `CQ2Onto/competency_question/*_cq2onto_cqs.json`.
 
 - [ ] **Step 1: Write failing tests for domain discovery and task-specific CQ counts**
 
-Assert the checked-in catalog returns both task counts independently for Wine, SWO, and ODRL: Wine `5/5`, SWO `26/35`, ODRL `19/18` in `(CQ2Term, CQ2Onto)` order. Assert an unknown domain raises `KeyError` and an absent task CQ file does not invent a count.
+Assert the checked-in catalog returns task counts independently: Wine `5/5`, SWO `26/35`, and ODRL source counts `19/18` in `(CQ2Term, CQ2Onto)` order. ODRL CQ2Term has two exact repeated rows (`CQ13`, `CQ26`), so its effective unique CQ count is `17`; the catalog must report both `source_count=19` and `count=17`. Assert an unknown domain raises `KeyError` and an absent task CQ file does not invent a count.
 
 - [ ] **Step 2: Run the catalog tests and verify they fail**
 
@@ -115,7 +115,7 @@ Expected: FAIL because `web.domain.catalog` does not exist.
 
 - [ ] **Step 3: Implement catalog discovery from the checked-in CQ files**
 
-Parse CQ JSON as structured data; require each entry to have a non-empty unique `id` and a string question from `value` or `question`. Keep CQ2Term and CQ2Onto registries separate even where their current contents overlap.
+Parse CQ JSON as structured data; require each entry to have a non-empty `id` and a string question from `value` or `question`. Merge repeated entries only when both `id` and question are identical; reject one ID paired with conflicting question text. Keep CQ2Term and CQ2Onto registries separate even where their current contents overlap, and do not modify benchmark CQ or gold files.
 
 Use the task's exact source path and keep questions in memory only for the response:
 
@@ -136,7 +136,7 @@ Use `zipfile.ZipFile` over `build_cq_bundle(...)` bytes. Assert the bundle conta
 
 - [ ] **Step 6: Implement deterministic CQ bundles and validation results**
 
-The manifest must contain `task`, `domain`, `version`, `count`, and `expected_cq_ids`. Use the SHA-256 of canonicalized task CQ JSON as `version`. The prediction template rows must contain exactly `id`, `value`, `class`, and `property`, with empty term arrays.
+The manifest must contain `task`, `domain`, `version`, `source_count`, `count`, `deduplicated_exact_duplicates`, and unique `expected_cq_ids`. Use the SHA-256 of canonicalized raw task CQ JSON as `version`. Set `count` to the number of unique prompts and `source_count` to the number of rows in the repository file. The prediction template rows must contain exactly `id`, `value`, `class`, and `property`, with empty term arrays.
 
 Keep ZIP paths fixed and use only source CQ data:
 
@@ -145,7 +145,9 @@ manifest = {
     "task": task,
     "domain": domain,
     "version": hashlib.sha256(canonical_cq_json).hexdigest(),
+    "source_count": len(source_cqs),
     "count": len(cqs),
+    "deduplicated_exact_duplicates": len(source_cqs) - len(cqs),
     "expected_cq_ids": [cq["id"] for cq in cqs],
 }
 ```

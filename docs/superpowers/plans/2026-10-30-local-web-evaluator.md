@@ -416,7 +416,7 @@ Commit: `git add web/app.py web/routes/api.py web/services/run_service.py web/se
 **Interfaces:**
 - Page routes in this task: `/agents`, `/runs/new`, `/domains`, `/domains/{domain}`. Task 6 adds `/records`, `/runs/{run_id}`, and `/compare`.
 - Agent screen supports creating/editing an Agent and managing one or more model rows using the API from Task 4.
-- Run screen selects Agent/model, one or more task/domain items, shows the per-task CQ count prominently, provides CQ bundle downloads, and accepts one prediction file per item.
+- Run screen selects Agent/model and adds one or more task/domain items using task and domain controls populated from the catalog. Do not render the full available domain list in the run form; show only selected items, their task-specific CQ counts, and bundle downloads.
 - Domain detail uses a drawer with task tabs, all CQ IDs/questions, count, input format, and task-specific bundle download.
 - Before CQ2Onto upload submission, a modal shows the total CQ count and completed count; it links to the drawer checklist and blocks submission until every CQ ID is marked provided to the Agent.
 - CQ2Term JSON upload validation is shown inline from API feedback; do not require a duplicate client-only validator.
@@ -425,9 +425,9 @@ Commit: `git add web/app.py web/routes/api.py web/services/run_service.py web/se
 
 Assert the route pages return 200, the domain list has no inline full question dump, run form contains task-specific CQ count targets, and domain drawer renders task-specific CQs and package links.
 
-- [ ] **Step 2: Implement server-rendered page routes and shared navigation**
+- [ ] **Step 2: Implement server-rendered page routes and shared sidebar navigation**
 
-Use Jinja2 templates and escape all user-provided Agent/model labels. Keep the first screen on the actual run/records workflow rather than a marketing introduction.
+Use Jinja2 templates and escape all user-provided Agent/model labels. Keep the first screen on the actual run/records workflow rather than a marketing introduction. Use a persistent sidebar with Run, Records, Domains, and Agent Management destinations; allow the sidebar to collapse into accessible navigation on narrow screens.
 
 Configure templates from the app package and pass only the required view model:
 

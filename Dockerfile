@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     CQ4OE_DATA_DIR=/app/data
 
-RUN apt-get update && apt-get install -y --no-install-recommends openjdk-17-jre-headless curl \
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-17-jre-headless curl gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -21,6 +21,5 @@ RUN groupadd --system --gid 10001 cq4oe \
     && mkdir -p /app/data \
     && chown -R cq4oe:cq4oe /app/data
 
-USER cq4oe
 EXPOSE 8000
 ENTRYPOINT ["/bin/sh", "/app/docker/entrypoint.sh"]

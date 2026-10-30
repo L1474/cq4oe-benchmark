@@ -4,7 +4,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - app-data:/app/data
+      - ./data:/app/data
     environment:
       CQ4OE_DATA_DIR: /app/data
       OLLAMA_BASE_URL: http://ollama:11434
@@ -31,5 +31,4 @@ services:
       start_period: 15s
 
 volumes:
-  app-data:
   ollama-models:

@@ -99,3 +99,12 @@ def test_upload_rejects_unsafe_name_and_oversize(tmp_path):
         service.save_item_upload(run_id, item["id"], upload("../bad.json", b"{}"))
     with pytest.raises(RunServiceError, match="size"):
         service.save_item_upload(run_id, item["id"], upload("ok.json", b"x" * 1025))
+
+
+def test_run_service_rejects_model_owned_by_another_agent(tmp_path):
+    service, db, agent_a, model_a, _ = setup_service(tmp_path)
+    agent_b = create_agent(db, user_id="local", name="Other")
+    model_b = create_model(db, user_id="local", agent_id=agent_b["id"], name="Other model",
+                           provider="ollama", model_id="other")
+    with pytest.raises(RunServiceError, match="does not belong"):
+        service.create_draft_run("local", agent_a["id"], model_b["id"], [{"task": "cq2term", "domain": "alpha"}], {})

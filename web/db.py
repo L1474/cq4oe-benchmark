@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def connect_database(db_path: Path) -> sqlite3.Connection:
@@ -31,13 +31,15 @@ CREATE TABLE agents (
 CREATE TABLE models (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
-    agent_id TEXT REFERENCES agents(id),
+    agent_id TEXT NOT NULL,
     name TEXT NOT NULL,
     provider TEXT NOT NULL,
     model_id TEXT NOT NULL,
     config_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     UNIQUE(user_id, id)
+    ,UNIQUE(user_id, agent_id, id)
+    ,FOREIGN KEY(user_id, agent_id) REFERENCES agents(user_id, id)
 );
 CREATE TABLE runs (
     id TEXT PRIMARY KEY,
@@ -54,7 +56,8 @@ CREATE TABLE runs (
     gold_fingerprint TEXT NOT NULL DEFAULT '',
     UNIQUE(user_id, id),
     FOREIGN KEY(user_id, agent_id) REFERENCES agents(user_id, id),
-    FOREIGN KEY(user_id, model_id) REFERENCES models(user_id, id)
+    FOREIGN KEY(user_id, model_id) REFERENCES models(user_id, id),
+    FOREIGN KEY(user_id, agent_id, model_id) REFERENCES models(user_id, agent_id, id)
 );
 CREATE TABLE run_items (
     id TEXT PRIMARY KEY,
@@ -191,6 +194,62 @@ COMMIT;
 """
 
 
+def _migrate_4_to_5(connection: sqlite3.Connection) -> None:
+    connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        # Old models were user-scoped. Preserve historical runs by splitting a
+        # model into Agent-owned copies when it was shared across Agents.
+        models = connection.execute("SELECT * FROM models WHERE agent_id IS NULL").fetchall()
+        from uuid import uuid4
+        for model in models:
+            owners = connection.execute(
+                "SELECT DISTINCT agent_id FROM runs WHERE user_id=? AND model_id=? ORDER BY agent_id",
+                (model["user_id"], model["id"]),
+            ).fetchall()
+            if not owners:
+                agents = connection.execute("SELECT id FROM agents WHERE user_id=? ORDER BY id", (model["user_id"],)).fetchall()
+                owners = agents if len(agents) == 1 else []
+            for index, owner in enumerate(owners):
+                agent_id = owner["agent_id"] if "agent_id" in owner.keys() else owner["id"]
+                model_id = model["id"] if index == 0 else str(uuid4())
+                if index == 0:
+                    connection.execute("UPDATE models SET agent_id=? WHERE id=?", (agent_id, model["id"]))
+                else:
+                    connection.execute(
+                        "INSERT INTO models (id,user_id,agent_id,name,provider,model_id,config_json,created_at) "
+                        "VALUES (?,?,?,?,?,?,?,?)",
+                        (model_id, model["user_id"], agent_id, model["name"], model["provider"],
+                         model["model_id"], model["config_json"], model["created_at"]),
+                    )
+                    connection.execute("UPDATE runs SET model_id=? WHERE user_id=? AND model_id=? AND agent_id=?",
+                                       (model_id, model["user_id"], model["id"], agent_id))
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_models_owner_ref ON models(user_id,agent_id,id)")
+        connection.execute("""
+            CREATE TABLE runs_v5 (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), agent_id TEXT NOT NULL,
+                model_id TEXT NOT NULL, status TEXT NOT NULL, config_json TEXT NOT NULL,
+                created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, run_path TEXT NOT NULL,
+                evaluator_version TEXT NOT NULL DEFAULT 'unknown', gold_fingerprint TEXT NOT NULL DEFAULT '',
+                UNIQUE(user_id,id),
+                FOREIGN KEY(user_id,agent_id) REFERENCES agents(user_id,id),
+                FOREIGN KEY(user_id,model_id) REFERENCES models(user_id,id),
+                FOREIGN KEY(user_id,agent_id,model_id) REFERENCES models(user_id,agent_id,id)
+            )
+        """)
+        connection.execute("INSERT INTO runs_v5 SELECT * FROM runs")
+        connection.execute("DROP TABLE runs")
+        connection.execute("ALTER TABLE runs_v5 RENAME TO runs")
+        connection.execute("CREATE INDEX idx_runs_user ON runs(user_id,created_at DESC)")
+        connection.execute("PRAGMA user_version = 5")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+
 def initialize_database(db_path: Path) -> None:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,7 +259,7 @@ def initialize_database(db_path: Path) -> None:
         if version > SCHEMA_VERSION:
             raise RuntimeError(f"database version {version} is newer than supported {SCHEMA_VERSION}")
         if version == 0:
-            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 4;\nCOMMIT;")
+            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 5;\nCOMMIT;")
         elif version == 1:
             connection.executescript(_MIGRATE_1_TO_2)
             connection.executescript(_MIGRATE_2_TO_3)
@@ -210,6 +269,9 @@ def initialize_database(db_path: Path) -> None:
             connection.executescript(_MIGRATE_3_TO_4)
         elif version == 3:
             connection.executescript(_MIGRATE_3_TO_4)
+            _migrate_4_to_5(connection)
+        elif version == 4:
+            _migrate_4_to_5(connection)
         connection.execute(
             "INSERT OR IGNORE INTO users (id, name, created_at) VALUES (?, ?, ?)",
             ("local", "Local User", "1970-01-01T00:00:00+00:00"),

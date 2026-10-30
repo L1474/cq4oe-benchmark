@@ -38,6 +38,18 @@ def test_models_are_listed_under_their_agent(tmp_path):
     assert [model["id"] for model in list_models(db, user_id="local", agent_id=first["id"])] == [one["id"]]
 
 
+def test_run_cannot_use_a_model_owned_by_another_agent(tmp_path):
+    db = tmp_path / "db.sqlite3"
+    initialize_database(db)
+    agent_a = create_agent(db, user_id="local", name="A")
+    agent_b = create_agent(db, user_id="local", name="B")
+    create_model(db, user_id="local", agent_id=agent_a["id"], name="A model", provider="ollama", model_id="a")
+    model_b = create_model(db, user_id="local", agent_id=agent_b["id"], name="B model", provider="ollama", model_id="b")
+    with pytest.raises(sqlite3.IntegrityError):
+        create_run(db, user_id="local", agent_id=agent_a["id"], model_id=model_b["id"],
+                   items=[], config={}, runs_root=tmp_path / "runs")
+
+
 def test_run_creation_items_events_and_metric_uniqueness(tmp_path):
     db = tmp_path / "db.sqlite3"
     initialize_database(db)

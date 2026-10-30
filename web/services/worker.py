@@ -85,17 +85,10 @@ class EvaluationWorker:
                 conn.execute("UPDATE run_items SET status='running', started_at=datetime('now') WHERE id=?", (item["id"],))
             try:
                 result = self.evaluator.evaluate_item(run, item, lambda event: self._record_event(run, item, event)) or {}
-                for artifact in result.get("artifacts", []):
-                    if isinstance(artifact, dict):
-                        source, category = Path(artifact["path"]), artifact.get("category", "results")
-                        stored = store_artifact(Path(run["run_path"]) / "items" / item["id"], source, category, artifact.get("media_type", "application/octet-stream"))
-                        add_artifact(self.db_path, user_id=run["user_id"], run_id=run["id"], run_item_id=item["id"],
-                                     category=category, relative_path=f"items/{item['id']}/{stored.relative_path}",
-                                     media_type=stored.media_type, size_bytes=stored.size_bytes, sha256=stored.sha256, name=stored.name)
                 if result.get("metrics"):
                     records = [{**metric, "run_item_id": item["id"]} for metric in result["metrics"]]
                     save_metrics(self.db_path, user_id=run["user_id"], run_id=run["id"], metrics=records)
-                self._index_outputs(run, item)
+                self._index_outputs(run, item, result.get("artifacts", []))
                 completed += 1
                 status = "completed"
             except Exception as exc:
@@ -113,18 +106,26 @@ class EvaluationWorker:
         transition_run(self.db_path, run_id=run["id"], expected="running", new=final)
         return True
 
-    def _index_outputs(self, run, item):
+    def _index_outputs(self, run, item, artifact_metadata=()):
         root = Path(run["run_path"])
         item_root = root / "items" / item["id"]
+        declared = {Path(entry["path"]).resolve(): entry for entry in artifact_metadata
+                    if isinstance(entry, dict) and entry.get("path")}
+        sources = {}
         for category in ("work", "results", "logs"):
-            for path in (item_root / category).rglob("*"):
-                if not path.is_file():
-                    continue
-                relative = path.relative_to(root).as_posix()
-                record = store_artifact(root, path, category, "text/plain")
-                add_artifact(self.db_path, user_id=run["user_id"], run_id=run["id"], run_item_id=item["id"],
-                             category=category, relative_path=record.relative_path, media_type=record.media_type,
-                             size_bytes=record.size_bytes, sha256=record.sha256, name=record.name)
+            sources.update({path.resolve(): category for path in (item_root / category).rglob("*") if path.is_file()})
+        for source in declared:
+            if source.is_file() and source.is_relative_to(item_root.resolve()):
+                sources.setdefault(source, "results")
+        for path, source_category in sources.items():
+            metadata = declared.get(path, {})
+            category = metadata.get("category", source_category)
+            media_type = metadata.get("media_type", "text/plain")
+            record = store_artifact(item_root, path, category, media_type)
+            add_artifact(self.db_path, user_id=run["user_id"], run_id=run["id"], run_item_id=item["id"],
+                         category=category, relative_path=f"items/{item['id']}/{record.relative_path}",
+                         media_type=record.media_type, size_bytes=record.size_bytes, sha256=record.sha256,
+                         name=metadata.get("name", record.name))
 
     def run_forever(self, stop_event: threading.Event):
         self.recover()

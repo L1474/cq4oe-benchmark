@@ -28,3 +28,18 @@ Result: **46 passed**. `git diff --check` passed. Pytest reports one upstream `D
 
 - API and repository-created Model behavior is Agent-associated. Existing database Models from before the migration remain unassigned rather than being guessed onto an Agent.
 - The worker and readiness services are covered with deterministic fakes; no live Ollama service or full benchmark subprocess run was performed.
+
+## Fix Round
+
+### RED
+
+- Added a repository test that creates two Agents and two owned Models, then attempts to create a run pairing Agent A with Model B. It failed because the initial schema allowed the mismatched pair.
+- Added a worker test that emits an item result file and asserts its indexed path stays under `items/<item_id>/results/`. It failed because indexing copied the file into the shared run-level `results/` directory.
+
+### GREEN
+
+- Schema version 5 adds a composite `(user_id, agent_id, model_id)` foreign key from runs to models, plus matching model uniqueness and Agent ownership constraints. The repository now associates unqualified model creation with the user's sole Agent, and rejects ambiguous cases. Run service checks require exact Agent ownership.
+- The v4 migration assigns legacy models to historical run Agents, splitting model rows when one legacy model was used by multiple Agents, then rebuilds the runs table with the composite foreign key.
+- Worker output indexing snapshots each item-local category walk before copying artifacts back into that same item tree. Declared artifact metadata is applied during the single indexing pass, avoiding a second indexing pass for the same source.
+- Added a migration regression test covering a legacy model shared across two Agents and verifying both historical run mappings and `PRAGMA foreign_key_check` after migration.
+- Final fix-round command `PYTHONDONTWRITEBYTECODE=1 python -m pytest web/tests -q -p no:cacheprovider`: **50 passed** with the same single upstream Starlette/AnyIO deprecation warning.

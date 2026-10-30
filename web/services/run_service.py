@@ -50,7 +50,7 @@ class RunService:
             model = conn.execute("SELECT agent_id FROM models WHERE id=? AND user_id=?", (model_id, user_id)).fetchone()
         if agent is None:
             raise RunServiceError("Agent not found.")
-        if model is None or model["agent_id"] not in (None, agent_id):
+        if model is None or model["agent_id"] != agent_id:
             raise RunServiceError("Model does not belong to the selected Agent.")
         run = create_run(self.db_path, user_id=user_id, agent_id=agent_id, model_id=model_id,
                          items=prepared, config=config, runs_root=self.runs_root, initial_status="draft")

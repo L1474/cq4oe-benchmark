@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 
 from web.db import connect_database, initialize_database
 from web.repositories import create_agent, create_model, create_run, get_run
@@ -103,3 +104,30 @@ def test_worker_recovers_running_run_and_keeps_queued_run(tmp_path):
     worker = EvaluationWorker(db, runs, Ready(), evaluator)
     assert worker.process_one() is True
     assert len(evaluator.seen) == 1
+
+
+def test_indexed_outputs_stay_under_their_run_item_directory(tmp_path):
+    db = tmp_path / "item-output.sqlite3"
+    initialize_database(db)
+    runs = tmp_path / "item-output-runs"
+    agent = create_agent(db, user_id="local", name="A")
+    model = create_model(db, user_id="local", agent_id=agent["id"], name="M", provider="ollama", model_id="m")
+    run = create_run(db, user_id="local", agent_id=agent["id"], model_id=model["id"],
+                     items=[{"task": "cq2term", "domain": "alpha"}], config={}, runs_root=runs)
+    item = run["items"][0]
+    input_path = runs / run["id"] / "items" / item["id"] / "input" / "prediction.json"
+    input_path.write_text("[]", encoding="utf-8")
+    with connect_database(db) as conn:
+        conn.execute("UPDATE run_items SET input_path=? WHERE id=?", (str(input_path), item["id"]))
+
+    class OutputEvaluator:
+        def evaluate_item(self, run, item, event_sink):
+            output = Path(run["run_path"]) / "items" / item["id"] / "results" / "result.txt"
+            output.write_text("result", encoding="utf-8")
+            return {"artifacts": [], "metrics": []}
+
+    assert EvaluationWorker(db, runs, Ready(), OutputEvaluator()).process_one()
+    result = get_run(db, user_id="local", run_id=run["id"])
+    output_artifact = next(a for a in result["artifacts"] if a["category"] == "results")
+    assert output_artifact["relative_path"].startswith(f"items/{item['id']}/results/")
+    assert (runs / run["id"] / output_artifact["relative_path"]).read_text(encoding="utf-8") == "result"

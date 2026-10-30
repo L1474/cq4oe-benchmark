@@ -31,6 +31,12 @@ def list_agents(db_path: Path, *, user_id: str) -> list[dict]:
 
 def create_model(db_path: Path, *, user_id: str, name: str, provider: str, model_id: str,
                  config: dict | None = None, agent_id: str | None = None) -> dict:
+    if agent_id is None:
+        with connect_database(db_path) as connection:
+            agents = connection.execute("SELECT id FROM agents WHERE user_id=? ORDER BY id", (user_id,)).fetchall()
+        if len(agents) != 1:
+            raise ValueError("agent_id is required unless the user has exactly one Agent")
+        agent_id = agents[0]["id"]
     result = {"id": str(uuid4()), "user_id": user_id, "agent_id": agent_id, "name": name, "provider": provider,
               "model_id": model_id, "config_json": json.dumps(config or {}, sort_keys=True), "created_at": _now()}
     with connect_database(db_path) as connection:

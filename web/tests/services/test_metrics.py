@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from web.services.metrics import extract_cq2onto_metrics, extract_cq2term_metrics
 from web.types import RunPaths
@@ -45,7 +46,7 @@ def test_cq2onto_keeps_scopes_distinct_and_null_empty_metrics(tmp_path):
             "precision": 1 / 3, "recall": 0.5, "f1": 0.4}}]},
         "04_axiom/eval_axioms_result.json": {"results": {
             "layer2": {"overall": {"tp": 1, "fp": 0, "fn": 1, "precision": 1, "recall": 0.5, "f1": 2 / 3}},
-            "layer3": {"counts_overall": {"tp": 1, "fp": 0, "fn": 1}},
+            "layer3": {"counts_overall": {"tp": 1, "fp": 1, "fn": 2, "mismatch": 2}},
             "layer4": {"grand": {"tp": 1, "fp": 1, "fn": 1}},
             "cq_coverage": {"n_total": 2, "n_any_covered": 1, "any_coverage": 0.5,
                              "average_rate": 0.25, "fully_coverage": 0}}},
@@ -67,5 +68,15 @@ def test_cq2onto_keeps_scopes_distinct_and_null_empty_metrics(tmp_path):
     empty_f1 = next(m for m in records if m.dimension == "property_characteristic" and
                     m.scope == "global" and m.metric_name == "f1")
     assert empty_f1.value is None
+    strict = next(m for m in records if m.dimension == "axiom" and m.layer == "layer3" and
+                  m.metric_name == "f1")
+    assert (strict.tp, strict.fp, strict.fn) == (1, 3, 4)
+    assert strict.value == pytest.approx(2 / 9)
+    axiom_coverage = next(m for m in records if m.dimension == "axiom" and
+                          m.metric_name == "any_cq_coverage")
+    hierarchy_coverage = next(m for m in records if m.dimension == "hierarchy" and
+                              m.metric_name == "any_cq_coverage")
+    assert axiom_coverage.scope == "strict"
+    assert hierarchy_coverage.scope == "closure"
     assert any(m.dimension == "hierarchy" and m.metric_name == "average_cq_coverage" and m.value == 0.25
                for m in records)

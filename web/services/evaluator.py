@@ -32,7 +32,7 @@ def run_stage(stage: EvaluationStage, stdout_path: Path, stderr_path: Path,
     def read_pipe(name: str, pipe) -> None:
         try:
             while True:
-                chunk = pipe.read(4096)
+                chunk = pipe.readline()
                 if not chunk:
                     break
                 chunks.put((name, chunk))

@@ -1,4 +1,7 @@
 from pathlib import Path
+import sys
+import threading
+import time
 from unittest.mock import patch
 
 import pytest
@@ -11,7 +14,7 @@ class _Pipe:
     def __init__(self, chunks):
         self.chunks = iter(chunks)
 
-    def read(self, _size):
+    def readline(self):
         return next(self.chunks, "")
 
 
@@ -41,3 +44,29 @@ def test_run_stage_streams_both_output_pipes_and_retains_logs(tmp_path, code):
     assert out_path.read_text(encoding="utf-8") == "out-1out-2"
     assert err_path.read_text(encoding="utf-8") == "err-1"
     assert {event["stream"] for event in events} == {"stdout", "stderr"}
+
+
+def test_run_stage_delivers_output_before_child_exits(tmp_path):
+    stage = EvaluationStage("stream", [sys.executable, "-u", "-c",
+        "import time; print('ready', flush=True); time.sleep(0.8)"], tmp_path)
+    out_path, err_path = tmp_path / "stream.stdout.log", tmp_path / "stream.stderr.log"
+    delivered = threading.Event()
+    finished = threading.Event()
+
+    def event_sink(event):
+        if event["stream"] == "stdout" and "ready" in event["text"]:
+            delivered.set()
+
+    def run():
+        run_stage(stage, out_path, err_path, event_sink)
+        finished.set()
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    try:
+        assert delivered.wait(0.4), "stdout should be delivered while the child is still running"
+        assert not finished.is_set()
+    finally:
+        worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert out_path.read_text(encoding="utf-8").startswith("ready")

@@ -56,3 +56,47 @@ Output:
 - Tests mock subprocess streams and do not start Java, Ollama, embeddings, or evaluator scripts, as required for focused service tests.
 
 `git diff --check` passed.
+
+## Review Fix Round 1
+
+RED command:
+
+```text
+$env:PYTHONDONTWRITEBYTECODE='1'; .superpowers/sdd/2026-10-30-local-web-evaluator/venv/Scripts/python.exe -m pytest -p no:cacheprovider web/tests/services/test_evaluator.py web/tests/services/test_metrics.py -q
+```
+
+Output before fixes:
+
+```text
+2 failed, 3 passed
+```
+
+The stream synchronization test timed out before the child exited. The metric fixture observed unchanged Axiom Layer 3 FP/FN, and set strict CQ coverage expectations against the current closure scope.
+
+GREEN focused service command:
+
+```text
+$env:PYTHONDONTWRITEBYTECODE='1'; .superpowers/sdd/2026-10-30-local-web-evaluator/venv/Scripts/python.exe -m pytest -p no:cacheprovider web/tests/services -q
+```
+
+Output:
+
+```text
+.......                                                                  [100%]
+7 passed in 1.09s
+```
+
+GREEN full web command:
+
+```text
+$env:PYTHONDONTWRITEBYTECODE='1'; .superpowers/sdd/2026-10-30-local-web-evaluator/venv/Scripts/python.exe -m pytest -p no:cacheprovider web/tests -q
+```
+
+Output:
+
+```text
+...............................                                          [100%]
+31 passed in 1.72s
+```
+
+The stream reader now emits complete lines promptly while independent reader threads continue draining both pipes. Strict Axiom Layer 3 counts add each mismatch to both FP and FN before deriving P/R/F1 and storing counts. Axiom CQ coverage now has `strict` scope; hierarchy closure coverage remains `closure`.

@@ -87,15 +87,20 @@ def _extract_prf_scope(records, dimension, layer, block, scope):
         _prf(records, dimension, layer, block, scope)
 
 
-def _counts_as_prf(block: dict) -> dict:
+def _counts_as_prf(block: dict, *, mismatch_as_both: bool = False) -> dict:
     tp, fp, fn = (_num(block, key) for key in ("tp", "fp", "fn"))
     if tp is None or fp is None or fn is None:
         return block
+    if mismatch_as_both:
+        mismatch = _num(block, "mismatch") or 0
+        fp += mismatch
+        fn += mismatch
     pden, rden = tp + fp, tp + fn
     precision = tp / pden if pden else None
     recall = tp / rden if rden else None
     f1 = 2 * precision * recall / (precision + recall) if precision is not None and recall is not None and precision + recall else None
-    return {**block, "precision": precision, "recall": recall, "f1": f1}
+    return {**block, "tp": tp, "fp": fp, "fn": fn,
+            "precision": precision, "recall": recall, "f1": f1}
 
 
 def extract_cq2onto_metrics(result_paths: RunPaths) -> list[MetricRecord]:
@@ -129,13 +134,14 @@ def extract_cq2onto_metrics(result_paths: RunPaths) -> list[MetricRecord]:
     for section, scope in (("layer2", "semantic"), ("layer3", "alignment_conditioned"), ("layer4", "global")):
         block = ax.get(section, {})
         overall = block.get("overall", block.get("counts_overall", block.get("grand", {})))
-        _extract_prf_scope(records, "axiom", section, _counts_as_prf(overall), scope)
+        _extract_prf_scope(records, "axiom", section,
+                           _counts_as_prf(overall, mismatch_as_both=section == "layer3"), scope)
         if section == "layer4" and not overall:
             _extract_prf_scope(records, "axiom", section, _counts_as_prf(block.get("grand", {})), scope)
     cov = ax.get("cq_coverage", {})
     for key, label in (("any_coverage", "any_cq_coverage"), ("fully_coverage", "fully_cq_coverage"),
                        ("average_rate", "average_cq_coverage")):
-        _coverage(records, "axiom", "cq_coverage", label, cov.get(key), "closure",
+        _coverage(records, "axiom", "cq_coverage", label, cov.get(key), "strict",
                   cov.get("n_any_covered") if key == "any_coverage" else None,
                   cov.get("n_total"))
 

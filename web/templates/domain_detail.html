@@ -21,6 +21,7 @@
   {% for task_name, task in domain.tasks.items() %}
   <section class="cq-task-panel" data-task-panel="{{ task_name }}" {% if not loop.first %}hidden{% endif %}>
     <div class="cq-panel-meta"><strong>{{ task.count }} CQs</strong><a class="button small" href="/api/catalog/{{ task_name }}/{{ domain.slug }}/bundle">Download bundle</a></div>
+    <p class="input-format"><strong>Prediction input</strong>{% if task_name == 'cq2term' %} JSON with CQ IDs and class/property term lists{% else %} OWL, RDF/XML, Turtle, N-Triples, or N3{% endif %}</p>
     <ol class="cq-list">{% for cq in task.cqs %}<li><code>{{ cq.id }}</code><p>{{ cq.question }}</p></li>{% endfor %}</ol>
   </section>
   {% endfor %}

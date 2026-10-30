@@ -30,15 +30,46 @@
     }
   }
 
+  function handleDialogKeys(event, dialog, close) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = $$('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]', dialog)
+      .filter((node) => !node.closest("[hidden]"));
+    if (!focusable.length) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!dialog.contains(document.activeElement)) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   function setupDomainDrawer() {
     const drawer = $("#cq-drawer");
     if (!drawer || !$("#domain-data")) return;
     const scrim = $("#drawer-scrim");
+    let drawerOpener = null;
     const close = () => {
       drawer.hidden = true;
       scrim.hidden = true;
+      drawerOpener?.focus();
     };
     const open = () => {
+      drawerOpener = document.activeElement;
       drawer.hidden = false;
       scrim.hidden = false;
       const first = $("[role=tab]", drawer);
@@ -60,9 +91,7 @@
       });
     };
     $$('[data-task-tab]', drawer).forEach((tab) => tab.addEventListener("click", () => selectTask(tab.dataset.taskTab)));
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !drawer.hidden) close();
-    });
+    document.addEventListener("keydown", (event) => { if (!drawer.hidden) handleDialogKeys(event, drawer, close); });
   }
 
   function setupAgents() {
@@ -233,6 +262,9 @@
     let ontoQueue = [];
     let ontoIndex = 0;
     let activeConfirmation = null;
+    let modelRequest = 0;
+    let submissionPending = false;
+    let uploadPending = false;
 
     async function loadAgents() {
       const agents = await request("/api/agents");
@@ -245,13 +277,19 @@
     }
 
     agentSelect.addEventListener("change", async () => {
+      const selectedAgent = agentSelect.value;
+      const requestId = ++modelRequest;
       modelSelect.replaceChildren(new Option("Select model", ""));
-      modelSelect.disabled = !agentSelect.value;
-      if (!agentSelect.value) return;
+      modelSelect.disabled = true;
+      if (!selectedAgent) return;
       try {
-        const models = await request(`/api/agents/${encodeURIComponent(agentSelect.value)}/models`);
+        const models = await request(`/api/agents/${encodeURIComponent(selectedAgent)}/models`);
+        if (requestId !== modelRequest || agentSelect.value !== selectedAgent) return;
         for (const model of models) modelSelect.add(new Option(`${model.name} (${model.model_id})`, model.id));
-      } catch (err) { showNotice(errorNode, err.message); }
+        modelSelect.disabled = false;
+      } catch (err) {
+        if (requestId === modelRequest && agentSelect.value === selectedAgent) showNotice(errorNode, err.message);
+      }
     });
 
     function selection() {
@@ -389,9 +427,34 @@
     const drawer = $("#cq-drawer");
     const scrim = $("#drawer-scrim");
     const modal = $("#confirmation-modal");
-    const closeDrawer = () => { drawer.hidden = true; scrim.hidden = true; };
-    const showModal = () => { modal.hidden = false; };
-    const closeModal = () => { modal.hidden = true; };
+    let drawerOpener = null;
+    let modalOpener = null;
+    let drawerReturnsToModal = false;
+    const closeDrawer = () => {
+      drawer.hidden = true;
+      scrim.hidden = true;
+      if (drawerReturnsToModal) {
+        drawerReturnsToModal = false;
+        modal.hidden = false;
+        $("#open-checklist").focus();
+      } else drawerOpener?.focus();
+    };
+    const showModal = () => {
+      if (modal.hidden) modalOpener = document.activeElement;
+      modal.hidden = false;
+      $("#open-checklist").focus();
+    };
+    const closeModal = (restoreFocus = true) => {
+      modal.hidden = true;
+      if (restoreFocus) {
+        $("#prepare-run").disabled = submissionPending || uploadPending;
+        modalOpener?.focus();
+      }
+    };
+    document.addEventListener("keydown", (event) => {
+      if (!drawer.hidden) handleDialogKeys(event, drawer, closeDrawer);
+      else if (!modal.hidden) handleDialogKeys(event, modal, closeModal);
+    });
     $$('[data-close-drawer]', drawer).forEach((button) => button.addEventListener("click", closeDrawer));
     scrim.addEventListener("click", closeDrawer);
     $("#close-confirmation").addEventListener("click", closeModal);
@@ -403,9 +466,13 @@
 
     async function openDrawer(item) {
       hideNotice(errorNode);
-      closeModal();
+      hideNotice($("#drawer-error"));
+      drawerReturnsToModal = !modal.hidden;
+      drawerOpener = document.activeElement;
+      if (drawerReturnsToModal) closeModal(false);
       drawer.hidden = false;
       scrim.hidden = false;
+      $('[data-close-drawer]', drawer).focus();
       $("#drawer-domain").textContent = item.domain;
       $("#drawer-tabs").replaceChildren();
       $("#drawer-content").replaceChildren();
@@ -442,6 +509,12 @@
       bundle.textContent = "Download bundle";
       meta.append(count, bundle);
       host.append(meta);
+      const format = document.createElement("p");
+      format.className = "input-format";
+      format.textContent = task === "cq2term"
+        ? "Prediction input: JSON with CQ IDs and class/property term lists"
+        : "Prediction input: OWL, RDF/XML, Turtle, N-Triples, or N3";
+      host.append(format);
       const list = document.createElement("ol");
       list.className = task === "cq2onto" && activeConfirmation?.item.domain === domain ? "cq-checklist" : "cq-list";
       for (const cq of detail.cqs) {
@@ -457,7 +530,10 @@
             activeConfirmation.saved = false;
             updateConfirmationProgress();
           });
-          const text = document.createElement("div");
+          const text = document.createElement("label");
+          const checkboxId = `cq-${domain}-${cq.id}`;
+          checkbox.id = checkboxId;
+          text.htmlFor = checkboxId;
           const id = document.createElement("code");
           id.textContent = cq.id;
           const question = document.createElement("p");
@@ -501,6 +577,7 @@
     $("#save-confirmation").addEventListener("click", async () => {
       if (!activeConfirmation) return;
       const { item, runItem } = activeConfirmation;
+      hideNotice($("#drawer-error"));
       try {
         await request(`/api/runs/${encodeURIComponent(activeRun.id)}/items/${encodeURIComponent(runItem.id)}/confirmation`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
@@ -511,7 +588,11 @@
         updateConfirmationProgress();
         closeDrawer();
         showModal();
-      } catch (err) { showNotice(errorNode, err.message); }
+      } catch (err) {
+        const inlineError = $("#drawer-error");
+        showNotice(inlineError, err.message);
+        inlineError.focus();
+      }
     });
 
     async function beginConfirmations() {
@@ -545,6 +626,8 @@
     });
 
     async function uploadAndStart() {
+      if (uploadPending) return;
+      uploadPending = true;
       hideNotice(errorNode);
       const button = $("#prepare-run");
       button.disabled = true;
@@ -576,10 +659,14 @@
             row.append(message);
           }
         }
-      } finally { button.disabled = false; }
+      } finally {
+        uploadPending = false;
+        button.disabled = false;
+      }
     }
 
     $("#prepare-run").addEventListener("click", async () => {
+      if (submissionPending || uploadPending || !modal.hidden || !drawer.hidden) return;
       hideNotice(errorNode);
       hideNotice(noticeNode);
       if (activeRun) {
@@ -588,7 +675,7 @@
           showNotice(errorNode, `Choose a file for ${incomplete[0].replace(":", " · ")}.`);
           return;
         }
-        beginConfirmations();
+        await beginConfirmations();
         return;
       }
       const items = selection();
@@ -596,10 +683,13 @@
       if (!items.length) { showNotice(errorNode, "Select at least one benchmark item."); return; }
       const missing = items.find((item) => !files.has(itemKey(item)));
       if (missing) { showNotice(errorNode, `Choose a file for ${itemKey(missing)}.`); return; }
-      if (items.some((item) => !details.has(itemKey(item)))) {
-        await Promise.all(items.map((item) => details.has(itemKey(item)) ? Promise.resolve() : loadCount(item)));
-      }
+      submissionPending = true;
+      const prepareButton = $("#prepare-run");
+      prepareButton.disabled = true;
       try {
+        if (items.some((item) => !details.has(itemKey(item)))) {
+          await Promise.all(items.map((item) => details.has(itemKey(item)) ? Promise.resolve() : loadCount(item)));
+        }
         activeRun = await request("/api/runs", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ agent_id: agentSelect.value, model_id: modelSelect.value, items, config: {} }),
@@ -612,6 +702,10 @@
         renderSelected();
         await beginConfirmations();
       } catch (err) { showNotice(errorNode, err.message); activeRun = null; }
+      finally {
+        submissionPending = false;
+        prepareButton.disabled = !modal.hidden || uploadPending;
+      }
     });
 
     loadAgents().catch((err) => showNotice(errorNode, err.message));

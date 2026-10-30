@@ -131,3 +131,47 @@ def test_indexed_outputs_stay_under_their_run_item_directory(tmp_path):
     output_artifact = next(a for a in result["artifacts"] if a["category"] == "results")
     assert output_artifact["relative_path"].startswith(f"items/{item['id']}/results/")
     assert (runs / run["id"] / output_artifact["relative_path"]).read_text(encoding="utf-8") == "result"
+
+
+def test_worker_shutdown_interrupts_active_stage_and_records_partial_log(tmp_path):
+    import sys
+    from web.services.evaluator import run_stage
+    from web.types import EvaluationStage
+
+    db, runs = setup(tmp_path)
+    started = threading.Event()
+
+    class SleepingEvaluator:
+        stop_event = None
+
+        def evaluate_item(self, run, item, event_sink):
+            log = Path(run["run_path"]) / "items" / item["id"] / "logs"
+            stage = EvaluationStage("sleep", [sys.executable, "-u", "-c",
+                "import time; print('started', flush=True); time.sleep(60)"], tmp_path)
+
+            def sink(event):
+                if "started" in event.get("text", ""):
+                    started.set()
+                event_sink(event)
+
+            run_stage(stage, log / "sleep.stdout.log", log / "sleep.stderr.log", sink,
+                      stop_event=self.stop_event)
+
+    worker = EvaluationWorker(db, runs, Ready(), SleepingEvaluator(), poll_interval=0.01)
+    stop = threading.Event()
+    thread = threading.Thread(target=worker.run_forever, args=(stop,))
+    thread.start()
+    try:
+        assert started.wait(5)
+        stop.set()
+        thread.join(3)
+        assert not thread.is_alive()
+        with connect_database(db) as conn:
+            row = conn.execute("SELECT id,status FROM runs WHERE status='failed'").fetchone()
+        assert row is not None
+        result = get_run(db, user_id="local", run_id=row["id"])
+        assert any(event["event_type"] == "interrupted" for event in result["events"])
+        assert any(artifact["name"] == "sleep.stdout.log" for artifact in result["artifacts"])
+    finally:
+        stop.set()
+        thread.join(3)

@@ -27,6 +27,7 @@ def create_app(settings: Settings, worker_factory: Callable | None = None) -> Fa
         worker = (worker_factory(settings, readiness) if worker_factory else
                   EvaluationWorker(settings.database_path, settings.runs_root, readiness,
                                    project_root=settings.project_root,
+                                   ollama_url=settings.ollama_url,
                                    poll_interval=settings.worker_poll_interval))
         app.state.readiness = readiness
         app.state.worker = worker

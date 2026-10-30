@@ -70,3 +70,46 @@ def test_run_stage_delivers_output_before_child_exits(tmp_path):
         worker.join(timeout=2)
     assert not worker.is_alive()
     assert out_path.read_text(encoding="utf-8").startswith("ready")
+
+
+def test_run_stage_terminates_sleeping_child_and_retains_partial_log(tmp_path):
+    from web.services.evaluator import EvaluationCancelled
+
+    stage = EvaluationStage("sleep", [sys.executable, "-u", "-c",
+        "import time; print('started', flush=True); time.sleep(60)"], tmp_path)
+    stop = threading.Event()
+    out_path, err_path = tmp_path / "sleep.stdout.log", tmp_path / "sleep.stderr.log"
+    seen = threading.Event()
+    errors = []
+
+    def sink(event):
+        if "started" in event.get("text", ""):
+            seen.set()
+
+    def run():
+        try:
+            run_stage(stage, out_path, err_path, sink, stop_event=stop)
+        except EvaluationCancelled as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    try:
+        assert seen.wait(5)
+        stop.set()
+        thread.join(3)
+        assert not thread.is_alive()
+        assert len(errors) == 1
+        assert out_path.read_text(encoding="utf-8").startswith("started")
+    finally:
+        stop.set()
+        thread.join(3)
+
+
+def test_run_stage_passes_ollama_host_to_child(tmp_path):
+    stage = EvaluationStage("env", [sys.executable, "-c",
+        "import os; print(os.environ['OLLAMA_HOST'])"], tmp_path)
+    out_path, err_path = tmp_path / "env.stdout.log", tmp_path / "env.stderr.log"
+    run_stage(stage, out_path, err_path, lambda _: None,
+              env={"OLLAMA_HOST": "http://ollama:11434"})
+    assert out_path.read_text(encoding="utf-8").strip() == "http://ollama:11434"

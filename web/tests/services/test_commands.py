@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from web.services.commands import build_cq2onto_commands, build_cq2term_command
+from web.services.worker import LocalEvaluator
 from web.types import RunItem, RunPaths
 
 
@@ -55,3 +56,42 @@ def test_cq2onto_stages_are_ordered_and_outputs_stay_in_item_workspace(tmp_path)
     assert not Path(atomic.command[-1]).is_relative_to(repo)
     assert "--pairs_csv" in stages[4].command
     assert "--output_txt" in stages[5].command
+
+
+def test_axiom_stage_uses_configured_ollama_service_url(tmp_path):
+    repo = tmp_path / "repo"
+    paths = RunPaths(tmp_path / "runs" / "item")
+    paths.ensure()
+    input_path = paths.input / "submitted.owl"
+    input_path.write_text("ontology", encoding="utf-8")
+    item = RunItem("item", "cq2onto", "wine", input_path)
+    stages = build_cq2onto_commands(repo, item, paths, {}, ollama_url="http://ollama:11434")
+    axiom = next(stage for stage in stages if stage.name == "axiom")
+    assert axiom.command[axiom.command.index("--ollama_url") + 1] == "http://ollama:11434"
+
+
+def test_local_evaluator_routes_all_embedding_stages_to_ollama_service(tmp_path, monkeypatch):
+    seen = []
+
+    def capture(stage, stdout_path, stderr_path, event_sink, **kwargs):
+        seen.append((stage.name, stage.command, kwargs["env"]))
+
+    monkeypatch.setattr("web.services.worker.run_stage", capture)
+    monkeypatch.setattr("web.services.worker.extract_cq2term_metrics", lambda *_: [])
+    monkeypatch.setattr("web.services.worker.extract_cq2onto_metrics", lambda *_: [])
+    evaluator = LocalEvaluator(tmp_path, "http://ollama:11434")
+    for task, filename in (("cq2term", "prediction.json"), ("cq2onto", "submitted.owl")):
+        item_root = tmp_path / "runs" / task / "items" / "item"
+        input_path = item_root / "input" / filename
+        input_path.parent.mkdir(parents=True)
+        input_path.write_text("{}", encoding="utf-8")
+        evaluator.evaluate_item({"run_path": str(item_root.parents[1]), "config_json": "{}"},
+                                {"id": "item", "task": task, "domain": "wine", "input_path": str(input_path)},
+                                lambda _: None)
+
+    assert {name for name, _, _ in seen} >= {"evaluate", "class", "property", "triple", "axiom"}
+    for name, _, env in seen:
+        if name in {"evaluate", "class", "property", "triple", "axiom"}:
+            assert env["OLLAMA_HOST"] == "http://ollama:11434"
+    axiom_command = next(command for name, command, _ in seen if name == "axiom")
+    assert axiom_command[axiom_command.index("--ollama_url") + 1] == "http://ollama:11434"

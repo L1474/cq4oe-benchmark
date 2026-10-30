@@ -57,7 +57,7 @@ def build_cq2term_command(project_root: Path, item: RunItem, paths: RunPaths,
 
 
 def build_cq2onto_commands(project_root: Path, item: RunItem, paths: RunPaths,
-                           config: dict) -> list[EvaluationStage]:
+                           config: dict, *, ollama_url: str = "http://127.0.0.1:11434") -> list[EvaluationStage]:
     paths.ensure()
     task_root = (project_root / "CQ2Onto").resolve()
     domain = item.domain
@@ -125,6 +125,7 @@ def build_cq2onto_commands(project_root: Path, item: RunItem, paths: RunPaths,
             "--pairs_csv", str((axiom_dir / "layer2_pairs.csv").resolve()),
             "--cache_path", str((paths.work / "embedding_cache.json").resolve()),
             "--model", model,
+            "--ollama_url", ollama_url,
             "--save_cq_csv", str(strict_cq_csv.resolve()), "--save_report_md", str(report),
             "--literal_relax", "no"], task_root, axiom_json, report),
         EvaluationStage("hierarchy", [sys.executable, "scripts/hierarchy/eval_hierarchy.py",

@@ -40,14 +40,29 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000). `http://127.0.0.1:8000/heal
 3. Produce predictions outside the app. Upload a UTF-8 JSON list for CQ2Term, with one object per CQ ID and `class` and `property` arrays of strings. Upload an ontology for CQ2Onto as `.owl`, `.rdf`, `.xml`, `.ttl`, `.nt`, or `.n3`. For CQ2Onto, confirm the complete CQ-ID checklist after providing every question to your Agent.
 4. Start the run. Records show its progress and comparable trends. Open a run for stage logs, a Markdown report, metrics, input snapshots, and downloadable evaluator outputs. CQ2Onto results can include Atomic TBox and hierarchy artifacts; output formats include JSON, CSV, TXT, and XLSX where produced by the evaluator. Select two to four compatible records on Compare to inspect metrics side by side.
 
-The host directory `./data` is mounted at `/app/data` and contains `evaluator.sqlite3` plus `runs/<run-id>/` inputs, logs, work files, reports, and results. Stop and restart without losing this data:
+The persistent `app-data` Docker volume is mounted at `/app/data` and contains `evaluator.sqlite3` plus `runs/<run-id>/` inputs, logs, work files, reports, and results. Docker initializes this volume with the app user's ownership on first launch, including on Linux. Stop and restart without losing this data:
 
 ```sh
 docker compose down
 docker compose up -d
 ```
 
-For a consistent backup, stop the app before copying the entire `./data` directory; keep the database and run files together. The Ollama model volume is separate and can be downloaded again. To reset application history, run `docker compose down`, then remove `./data` after making any needed backup. `docker compose down -v` also deletes the downloaded Ollama models. Neither `docker compose down` nor rebuilding the app image removes `./data`.
+For a consistent backup, stop the app and export the entire application volume into a host `./backup` directory. Create that directory first; these commands work from the repository root on Linux, macOS, and PowerShell:
+
+```sh
+docker compose down
+mkdir backup
+docker compose run --rm --no-deps --user 0 --volume ./backup:/backup --entrypoint tar app -C /app/data -czf /backup/cq4oe-data.tgz .
+```
+
+Keep the database and run files together in the archive. To restore into an empty app volume after `docker compose down -v`, use:
+
+```sh
+docker compose run --rm --no-deps --user 0 --volume ./backup:/backup:ro --entrypoint tar app -C /app/data -xzf /backup/cq4oe-data.tgz
+docker compose up -d
+```
+
+`docker compose down -v` resets both the application data and Ollama model volumes. Run it only after a backup if you need previous runs. Ordinary `docker compose down` and image rebuilds preserve both volumes. The Ollama model can be downloaded again.
 
 ## Contributing to CQ4OE
 If you wish to submit your own results, please open an issue with:

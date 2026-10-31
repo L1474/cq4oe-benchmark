@@ -13,6 +13,8 @@ from fastapi.templating import Jinja2Templates
 from web.db import connect_database
 from web.domain.catalog import get_domain_detail, list_domains
 from web.repositories import get_run, list_agents, resolve_artifact_path
+from web.i18n import (dimension_label, event_label, layer_label, metric_label,
+                      scope_label, stage_label, status_label, task_label, unit_label)
 
 pages_router = APIRouter()
 
@@ -53,7 +55,19 @@ def _report_sections(safe_html: str) -> list[dict]:
 
 
 def _templates(request: Request) -> Jinja2Templates:
-    return Jinja2Templates(directory=str(request.app.state.settings.web_root / "templates"))
+    templates = Jinja2Templates(directory=str(request.app.state.settings.web_root / "templates"))
+    templates.env.filters.update({
+        "dimension_label": dimension_label,
+        "layer_label": layer_label,
+        "metric_label": metric_label,
+        "scope_label": scope_label,
+        "status_label": status_label,
+        "task_label": task_label,
+        "unit_label": unit_label,
+        "stage_label": stage_label,
+        "event_label": event_label,
+    })
+    return templates
 
 
 @pages_router.get("/agents", response_class=HTMLResponse)
@@ -110,7 +124,7 @@ def run_detail_page(request: Request, run_id: str):
             within_item = relative[len(prefix):] if relative.startswith(prefix) else f"{artifact['category']}/{artifact['name']}"
             artifact["context_label"] = f"{item['task'].upper()} / {item['domain']} · {within_item}"
         else:
-            artifact["context_label"] = f"Run · {artifact['category']}/{artifact['name']}"
+            artifact["context_label"] = f"运行 · {artifact['category']}/{artifact['name']}"
     reports = []
     report_artifacts = [artifact for artifact in run["artifacts"] if artifact["name"].lower() == "report.md"]
     for index, report_artifact in enumerate(report_artifacts, start=1):
@@ -129,8 +143,8 @@ def run_detail_page(request: Request, run_id: str):
         except (OSError, UnicodeError, ValueError):
             continue
     return _templates(request).TemplateResponse(request, "run_detail.html", {
-        "run": run, "agent": dict(agent) if agent else {"name": "Unknown"},
-        "model": dict(model) if model else {"name": "Unknown", "model_id": "", "provider": ""},
+        "run": run, "agent": dict(agent) if agent else {"name": "未知 Agent"},
+        "model": dict(model) if model else {"name": "未知模型", "model_id": "", "provider": ""},
         "reports": reports, "config": json.loads(run["config_json"]),
     })
 

@@ -1,230 +1,120 @@
-# CQ4OE: A benchmark for assessing the LLM-assisted ontology generation from competency questions
+# CQ4OE：从能力问题评估 LLM 辅助本体生成
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20080309.svg)](https://doi.org/10.5281/zenodo.20080309)
 
-This repository contains a benchmark for assessing the performance of different LLM-based ontology generation methods from competency questions. The benchmark is built on six domain experts annotated ontologies that are exact mirroring the corresponding competency questions. 
+CQ4OE 用统一的能力问题（Competency Questions，CQ）评估不同的 LLM 本体生成方法。仓库包含六个由领域专家标注的本体，以及与 CQ 对齐的 CQ2Term 和 CQ2Onto 金标准。
 
-The gold standards for both tasks and entire annotation process are also published as a dataset on HuggingFace: [oeg/CQ4OE](https://huggingface.co/datasets/oeg/CQ2Onto);
+金标准和完整标注过程也发布在 HuggingFace 数据集：[oeg/CQ4OE](https://huggingface.co/datasets/oeg/CQ2Onto)。
 
-**Task 1: [CQ2Term](https://w3id.org/cq4oe/task/CQ2Term)** Given a competency question, the LLM-based method aims to extract the classes and properties required to answer it.
- 
-**Task 2: [CQ2Onto](https://w3id.org/cq4oe/task/CQ2Onto)** Given a set of competency questions in any domain, processing by LLM-based ontology generation method, producing a full OWL ontology.
+## 两个评测任务
 
-**Source Ontologies**:
-- [Wine](https://github.com/UCDavisLibrary/wine-ontology): Wine Ontology
-- [VGO](https://vocab.linkeddata.es/vgo/): VideoGame Ontolgy
-- [SWO](https://obofoundry.org/ontology/swo.html): Software Ontology
-- [AWO](https://people.cs.uct.ac.za/~mkeet/OEbook/ontologies/AfricanWildlifeOntology1.owl): African wildlife Ontology
-- [ODRL](https://www.w3.org/ns/odrl/2/): Open Digital Rights Language Ontology
-- [Water](https://saref.etsi.org/saref4watr/v1.1.1/#clause-4-2-7): SAREF4WATR Ontolgy
+- **[CQ2Term](https://w3id.org/cq4oe/task/CQ2Term)**：给定一个能力问题，预测回答该问题所需的类和属性。
+- **[CQ2Onto](https://w3id.org/cq4oe/task/CQ2Onto)**：给定一个领域的一组能力问题，生成能够回答这些问题的完整 OWL 本体。
 
-## Leaderboard
-Check the current [leaderboard from running the benchmark with three families of models, under three generation baselines (all cqs at the same time, cq by cq and an agentic approach)](https://oeg-upm.github.io/cq4oe-benchmark/leaderboard/)
+## 已有领域
 
-## Using CQ4OE
-If you want to use CQ4OE with your generated ontologies from your own baselines, please see the [usage instructions](usage_instructions.md).
+- [Wine](https://github.com/UCDavisLibrary/wine-ontology)：葡萄酒本体
+- [VGO](https://vocab.linkeddata.es/vgo/)：电子游戏本体
+- [SWO](https://obofoundry.org/ontology/swo.html)：软件本体
+- [AWO](https://people.cs.uct.ac.za/~mkeet/OEbook/ontologies/AfricanWildlifeOntology1.owl)：非洲野生动物本体
+- [ODRL](https://www.w3.org/ns/odrl/2/)：开放数字权利语言本体
+- [Water](https://saref.etsi.org/saref4watr/v1.1.1/#clause-4-2-7)：SAREF4WATR 本体
 
-### Local evaluator (Docker Compose)
+## 本地 Web 评测台（Docker Compose）
 
-Install Docker Desktop (or Docker Engine with the Compose plugin) and start it before running these commands from the repository root. The application image contains Python 3.10 and Java 17 for the HermiT reasoner. On the first launch, Ollama downloads `embeddinggemma` into its persistent Docker volume. The web pages are available while this happens; queued evaluations wait for the model. The download needs network access and may take several minutes.
+安装 Docker Desktop 或带 Compose 插件的 Docker Engine，然后在仓库根目录执行：
 
 ```sh
 docker compose up --build -d
 docker compose ps
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). `http://127.0.0.1:8000/health` reports `database` (`ok` or `unavailable`) and `embedding` (`starting` or `ready`). The app is healthy while embedding is still starting. To watch the first model pull or diagnose a failed launch, use `docker compose logs -f app ollama`.
+打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。`/health` 会报告数据库和 embedding 模型状态。首次启动时 Ollama 会把 `embeddinggemma` 下载到持久化卷；下载期间页面仍可访问，排队中的评测会等待模型就绪。查看启动日志：
 
-1. Create an Agent and one of its models on the Agents page. The model entry labels your evaluated submission; the evaluator does not run your Agent.
-2. Create a run, choose one or more task/domain pairs, and download each CQ package from the domain drawer. Each ZIP contains `cqs.json`, `manifest.json` with the version and complete CQ IDs, and a README. CQ2Term packages also include `prediction_template.json`. Packages contain no gold answers.
-3. Produce predictions outside the app. Upload a UTF-8 JSON list for CQ2Term, with one object per CQ ID and `class` and `property` arrays of strings. Upload an ontology for CQ2Onto as `.owl`, `.rdf`, `.xml`, `.ttl`, `.nt`, or `.n3`. For CQ2Onto, confirm the complete CQ-ID checklist after providing every question to your Agent.
-4. Start the run. Records show its progress and comparable trends. Open a run for stage logs, a Markdown report, metrics, input snapshots, and downloadable evaluator outputs. CQ2Onto results can include Atomic TBox and hierarchy artifacts; output formats include JSON, CSV, TXT, and XLSX where produced by the evaluator. Select two to four compatible records on Compare to inspect metrics side by side.
+```sh
+docker compose logs -f app ollama
+```
 
-The host `./data` directory is mounted at `/app/data` and contains `evaluator.sqlite3` plus `runs/<run-id>/` inputs, logs, work files, reports, and results. At startup the container assigns this directory to the app user, including when Docker created it as root on Linux. The server then runs as UID 10001. Stop and restart without losing this data:
+### Web 评测流程
+
+1. 在 **Agent 管理** 页面创建 Agent，并为它添加一个或多个模型。这里的模型名称用于标记被评估的提交；评测台不会替用户运行 Agent。
+2. 在 **新建运行** 页面选择 Agent、模型和一个或多个“任务 / 领域”条目。打开领域详情可以查看完整 CQ 清单，也可以下载领域专属 CQ 包。
+3. 在评测台外运行你的 Agent。CQ 包包含 `cqs.json`、带版本和完整 CQ ID 的 `manifest.json`、README，以及 CQ2Term 的 `prediction_template.json`；包内不包含金标准答案。
+4. 上传预测产物：CQ2Term 上传 UTF-8 JSON；CQ2Onto 上传 `.owl`、`.rdf`、`.xml`、`.ttl`、`.nt` 或 `.n3` 本体文件。CQ2Onto 需要在上传前确认 Agent 已获得清单中的全部 CQ。
+5. 点击“准备运行”。评测台会为本次 run 建立独立目录，保存输入快照、阶段日志、`report.md`、指标和评测脚本生成的 JSON/CSV/TXT/XLSX/Atomic TBox 等产物。
+6. 在 **运行记录** 中筛选 Agent、模型、任务、领域、状态和日期。列表默认显示与上一条可比记录的指标趋势，可关闭趋势；选择 2～4 条记录后可以进入对比页查看共同条目和指标变化。
+
+### 数据保存与备份
+
+主机 `./data` 挂载到容器的 `/app/data`，包含 `evaluator.sqlite3` 和 `runs/<run-id>/` 下的输入、日志、工作文件、报告与结果。停止并重启不会丢失数据：
 
 ```sh
 docker compose down
 docker compose up -d
 ```
 
-For a consistent backup, stop the app and copy the entire host `./data` directory to a separate backup location. Keep the database and all run files together:
+做备份时先停止 Compose，再完整复制 `./data` 目录；数据库和所有 run 文件必须一起保存。恢复时将备份目录放回 `./data` 后重新启动 Compose。Ollama 模型保存在单独的 Docker volume 中。
 
-```sh
-docker compose down
-```
+## 评测产物和指标
 
-To restore, stop Compose, place the backed-up `data` directory at `./data`, and start Compose again. Ordinary `docker compose down` and image rebuilds preserve `./data` and the separate Ollama model volume. Avoid changing the contents of `./data` while the app is running.
+CQ2Onto 采用分层评测，页面默认按维度和层级展示指标，详细结果可在运行详情中查看：
 
-## Contributing to CQ4OE
-If you wish to submit your own results, please open an issue with:
-- The generated ontologies (a .ttl file for each)
-- The task it addresses (CQ2Term or CQ2onto)
-- Details on the model / approach used in the generation.
+1. **类与属性（ClassProperty）**：硬匹配、序列匹配、编辑距离、Jaro-Winkler 距离、语义余弦相似度、Top-3 聚合，以及精确率、召回率、F1。
+2. **属性特征（PropertyCharacteristics）**：功能性、传递性等 OWL 属性特征的精确率、召回率、F1。
+3. **三元组（Triple）**：domain/range 三元组的精确率、召回率、F1 和嵌入诊断。
+4. **公理（Axiom）**：原子 TBox 公理的精确率、召回率、F1、嵌入诊断，以及至少一项、平均、完整覆盖率。
+5. **层级闭包（HierarchyClosure）**：使用 HermiT 推理器计算类和属性继承闭包的精确率、召回率、F1，以及闭包补救覆盖率。
+6. **CQ 覆盖率（CQCoverage）**：每个 CQ 所需 TBox 公理在生成本体中的至少一项、平均、完整覆盖率，并统计闭包补救覆盖率。
 
-We'll do our best to verify your results. Once the results have been verified, they will be added to the repository.
+CQ2Term 评估显式类和属性，主要包含类与属性匹配指标、整体精确率 / 召回率 / F1，以及按 CQ 的覆盖率指标。评测台会保存 TP、FP、FN、分子、分母等可复核计数。
 
-## Annotation
+## 标注流程
 
-The annotated ontologies in this benchmark are not just snapshots of existing ontologies. Every class, property and axiom is explicitly tied back to the competency questions. This section documents how that link was built so anyone adding a new domain can do the same thing.
+每个源本体的标注分为四个阶段：
 
-### Annotation Pipeline
+1. **核心词项选择**：结合连接度统计、可视化和领域相关性确定核心类与属性。
+2. **CQ 筛选与标注**：排除依赖外部知识、无法由本体回答或只涉及 ABox 的 CQ，并标注显式、隐式和派生词项。
+3. **CQ 补充**：为没有被任何 CQ 覆盖的核心词项新增可回答的 CQ；新增 CQ 在数据集中以 `⋆` 标记。
+4. **金标准构建**：同时构建 CQ2Term 和 CQ2Onto。CQ2Term 保留显式词项；CQ2Onto 保留显式、隐式、派生词项及其必要公理，并记录 CQ 到词项 / 公理的来源关系。
 
-The annotation runs as a four-phase pipeline. Phase 1 fixes the conceptual backbone of the source ontology; Phase 2 filters and annotates the CQs; Phase 3 augments the CQ set so that each core term is covered; Phase 4 composes the two gold standards (CQ2Term and CQ2Onto) with full CQ-to-term and CQ-to-axiom provenance. Each decision is reviewed by three people independently (one annotator with OE background and two reviewers), and an item is kept only if at least 2 of 3 agree.
+每个决定由三人独立审核，至少两人同意才保留。
 
-![Annotation pipeline](https://raw.githubusercontent.com/oeg-upm/cq4oe-benchmark/main/diagram/cq4or_anno_pipeline.png)
+## 数据集规模
 
-*Figure 1. CQ4OE annotation pipeline. Include 4 Phases.*
+| 本体 | 规模 | 源 CQ | 保留 | 新增 `⋆` | CQ2Onto | CQ2Term |
+|---|---:|---:|---:|---:|---:|---:|
+| Wine | 小 | 7 | 4 | 1 | 5 | 5 |
+| AWO | 小 | 14 | 7 | 0 | 7 | 7 |
+| ODRL | 中 | 35 | 13 | 6 | 19 | 19 |
+| Water | 中 | 43 | 21 | 0 | 21 | 20 |
+| VGO | 大 | 68 | 30 | 1 | 31 | 22 |
+| SWO | 大 | 88 | 35 | 0 | 35 | 26 |
 
-### Annotation Guideline
+## 命令行评测
 
-For each source ontology, the annotation runs in three stages.
-
-For each source ontology, the annotation runs through the four phases shown in Figure 1.
-
-**Phase 1 — Core term selection.** Before processing any competency question, domain experts identify the conceptual backbone (key concepts and properties) of the source ontology using two complementary criteria. **Quantitatively**, named classes and properties are ranked by in- and out-degree, and the highly connected nodes are taken as initial candidates. **Qualitatively**, the ontology is visualized with [`owl2diagram`](https://github.com/jatoledo/owl2diagram) and inspected against the published requirements. A term is retained as a core term if it is highly connected, visually central, and domain-relevant. This keeps the backbone of the source ontology with maximum coverage.
-
-**Phase 2 — CQ filtering and annotation.** Filter out CQs that use external knowledge or out-of-scope concepts, that cannot be answered from the ontology, or that target instance-level (ABox) rather than TBox knowledge. For each retained CQ, annotate its terms in three categories:
-- **Explicit:** terms that appear lexically in the CQ. *Example:* in *"Which animal eats which other animal?"*, `Animal` and `eats` are explicit.
-- **Implicit:** terms expressed through synonymous phrasing. *Example:* in a wine CQ saying *"used to make"*, `madeFromGrape` is implicit.
-- **Derived:** terms required to answer the CQ but not stated in it (including answer-side concepts). *Example:* a CQ about *"duration"* requires `hasStartTimestamp` and `hasEndTimestamp` to formulate the answer.
-
-
-**Phase 3 — CQ augmentation.** Check whether each core term selected in Phase 1 is required by at least one annotated CQ. For each uncovered core term, domain experts author a brand-new CQ that (i) is answerable from the source ontology, (ii) requires the uncovered term, and (iii) follows the style of the original CQs. New CQs are annotated as in Phase 2 and marked with **⋆** in the dataset.
-
-
-**Phase 4 — Gold standard construction.** Build two gold standards in parallel:
-
-- **CQ2Term gold.** For each CQ with at least one Explicit term, keep its Explicit classes and properties. Output: **CQ-to-term provenance**. CQs without Explicit terms are excluded here, but stay in CQ2Onto.
-
-- **CQ2Onto gold.**  For each CQ, take its Explicit + Implicit + Derived terms, extract a fair and equivalent ontology fragment containing them and the axioms involving them, and drop ABox assertions. Keep an axiom if removing it would make the CQ unanswerable. Output: a CQ-aligned sub-ontology with **CQ-to-axiom provenance**.
-
-
-
-Missing Elements are documented but are not part of either gold standard.
-
-All decisions in Phases 1–4 follow the review protocol introduced above (three people independently, ≥ 2/3 agreement to keep, otherwise discard).
-
-
-CQ: Which animals are the predators of [these animals]?
-- Explicit Class:     Animal
-- Explicit Property:  —
-- Implicit Class:     —
-- Implicit Property:  eats          (CQ says "predators of", ontology has `eats`)
-- Derived Class:      Carnivore     (needed to answer; CQ doesn't mention it)
-- Derived Property:   —
-- Missing Element:    "predators" is not in the ontology; expressed via `eats` + `Carnivore`
-
-
-### Dataset Description
-
-We have selected six ontologies in three diferent scales:
-| Ontology | Tier | Source CQs | Retained | New ⋆ | CQ2Onto set | CQ2Term set |
-|----------|------|-----------:|---------:|------:|------------:|------------:|
-| Wine     | small  | 7   | 4   | 1 | 5  | 5  |
-| AWO      | small  | 14  | 7   | 0 | 7  | 7  |
-| ODRL     | medium | 35  | 13  | 6 | 19 | 19 |
-| Water    | medium | 43  | 21  | 0 | 21 | 20 |
-| VGO      | large  | 68  | 30  | 1 | 31 | 22 |
-| SWO      | large  | 88  | 35  | 0 | 35 | 26 |
-
-## LLM Usage:
-
-This repository evaluates LLM-based methods for two tasks: CQ2Onto (full-ontology generation) and CQ2Term (term-level generation), with the selection of baseline LLMs.
-
-### Baseline LLMs Selection
-
-- **Qwen-3.6 Series**: 
-  - **Qwen-3.6-27B**: Open-source dense 27B parameter model
-  - **Qwen-3.6-35B**: Open-source Mixture-of-Experts model, 35B total parameters with only 3B active per token
-  - **Qwen-3.6-flash**: Closed-weights API-only low-latency model
-  - **Qwen-3.6-plus**: Closed-weight API-only flagship model with 1M context window
-- **Gemma-4 Series**:
-  - **Gemma-4-26B**: Open-source Mixture-of-Experts model with 4B active per token
-  - **Gemma-4-31B**: Open-source dense 31B parameter model 
-- **Deepseek Series**:
-  - **Deepseek-V3.2-671B**: The previous-generation flagship, Mixture-of-Experts  model from Deepseek.
-  - **Deepseek-V4-flash-284B**: Efficient Mixture-of-Experts model with 13B activate parameter
-  - **Deepseek-V4-1.6T**: Flagship Mixture-of-Experts model with 49B activate parameter, 1M context window.
-
-### CQ2Onto
- 
-This repository evaluates three different LLM-assiat ontology generation methods.:
- 
-- **normal**: Give the model all the CQs and ask for the OWL ontology in one shot.
-- [Cq-by-Cq Generation](https://github.com/LiUSemWeb/LLMs4OntologyDev-ESWC2024): generate a partial ontology per CQ and merge them. Slower but the model has to think about each question individually.
-- [MASEO](https://github.com/oeg-upm/maseo): Multi-Agent System for Explainable Ontology Generation.
-
-
-### CQ2Term
- 
-One LLM-based method for term-level prediction:
- 
-- **zero-shot term prediction**: Given a competency question, the model directly outputs the classes and properties required to answer it.
-
-### Prompts
-
-The prompts that drive every model for each method is under `CQ2Onto/prompts/` and `CQ2Term/prompts/`. They are kept in plain JSON, one file per generation method. Every prompt file is a JSON array of *agent* objects. Each object has three fields:
-
-```json
-[
-  {
-    "agent": "the name of the LLM-based agent",
-    "instruction": "the system message of the given agent",
-    "prompt": "the user message designed for the task corresponding to the agent"
-  }
-]
-```
-
-## Evaluation
-
-The benchmark is organized as **tasks** → **dimensions** → **metrics**. A task is an evaluation track (CQ2Onto, CQ2Term); a dimension is one aspect evaluated within a task; a metric is a single measurement applied to a dimension. Definitions, formulas, and persistent identifiers for every dimension and metric are in the catalogue.
- 
-To submit a new model: place its outputs under the corresponding `predictions/` folder and run the script. The pipeline locates the gold standard, runs every dimension, and writes per-dataset and per-model results to `03_evaluation_results/` and `04_summary/`.
+如果不使用 Web 评测台，也可以把预测产物放入对应的 `predictions/` 目录后运行原有脚本：
 
 ```bash
 # CQ2Term
 cd CQ2Term && python scripts/run_all_cq2term.py
- 
-# CQ2Onto, all three generation strategies
+
+# CQ2Onto：三种生成策略
 cd CQ2Onto && python scripts/run_all_evaluation_agent_4datsets.py
 ```
 
-### CQ2Onto
- 
-Given a set of competency questions, the LLM produces a full OWL ontology. The output is evaluated against a CQ-aligned gold OWL ontology along the dimensions below. The first dimension yields a one-to-one term alignment that the others reuse to translate predicted vocabulary into gold vocabulary.
- 
-1. [`ClassProperty`](https://w3id.org/cq4oe/dimension/ClassProperty)
-   1. Target: Do the generated classes and properties match the gold ones?
-   2. Metrics: [`HardMatch`](https://w3id.org/cq4oe/metric/HardMatch), [`SequenceMatch`](https://w3id.org/cq4oe/metric/SequenceMatch), [`LevenshteinDistance`](https://w3id.org/cq4oe/metric/LevenshteinDistance), [`JaroWinklerDistance`](https://w3id.org/cq4oe/metric/JaroWinklerDistance), [`SemanticCosineSimilarity`](https://w3id.org/cq4oe/metric/SemanticCosineSimilarity), [`AggregatedTop3`](https://w3id.org/cq4oe/metric/AggregatedTop3); [`Precision`](https://w3id.org/cq4oe/metric/Precision), [`Recall`](https://w3id.org/cq4oe/metric/Recall), [`F1`](https://w3id.org/cq4oe/metric/F1).
-2. [`PropertyCharacteristics`](https://w3id.org/cq4oe/dimension/PropertyCharacteristics)
-   1. Target: Are the OWL property characteristics (functional, transitive, etc.) on each aligned property correct?
-   2. Metrics: [`Precision`](https://w3id.org/cq4oe/metric/Precision), [`Recall`](https://w3id.org/cq4oe/metric/Recall), [`F1`](https://w3id.org/cq4oe/metric/F1).
-3. [`Triple`](https://w3id.org/cq4oe/dimension/Triple)
-   1. Target: Do the generated domain/range triples match the gold ones?
-   2. Metrics: [`Precision`](https://w3id.org/cq4oe/metric/Precision), [`Recall`](https://w3id.org/cq4oe/metric/Recall), [`F1`](https://w3id.org/cq4oe/metric/F1); [`EmbeddingDiagnostic`](https://w3id.org/cq4oe/metric/EmbeddingDiagnostic).
-4. [`Axiom`](https://w3id.org/cq4oe/dimension/Axiom)
-   1. Target: Do the generated TBox axioms match the gold ones at the atomic level?
-   2. Metrics: [`Precision`](https://w3id.org/cq4oe/metric/Precision), [`Recall`](https://w3id.org/cq4oe/metric/Recall), [`F1`](https://w3id.org/cq4oe/metric/F1); [`EmbeddingDiagnostic`](https://w3id.org/cq4oe/metric/EmbeddingDiagnostic); [`AtLeastOneCoverage`](https://w3id.org/cq4oe/metric/AtLeastOneCoverage), [`MeanCoverage`](https://w3id.org/cq4oe/metric/MeanCoverage), [`FullCoverage`](https://w3id.org/cq4oe/metric/FullCoverage).
-5. [`HierarchyClosure`](https://w3id.org/cq4oe/dimension/HierarchyClosure)
-   1. Target: Does the generated ontology entail the same class and property subsumptions as the gold one? Closure is computed with the HermiT reasoner.
-   2. Metrics: [`Precision`](https://w3id.org/cq4oe/metric/Precision), [`Recall`](https://w3id.org/cq4oe/metric/Recall), [`F1`](https://w3id.org/cq4oe/metric/F1); [`ClosureRescueCoverage`](https://w3id.org/cq4oe/metric/ClosureRescueCoverage).
-6. [`CQCoverage`](https://w3id.org/cq4oe/dimension/CQCoverage)
-   1. Target: For each CQ, how many of its required TBox axioms appear in the generated ontology?
-   2. Metrics: [`AtLeastOneCoverage`](https://w3id.org/cq4oe/metric/AtLeastOneCoverage), [`MeanCoverage`](https://w3id.org/cq4oe/metric/MeanCoverage), [`FullCoverage`](https://w3id.org/cq4oe/metric/FullCoverage); [`ClosureRescueCoverage`](https://w3id.org/cq4oe/metric/ClosureRescueCoverage) credits hierarchy axioms reachable through reasoner closure.
+评测脚本会读取金标准，执行各个维度，并把结果写入 `03_evaluation_results/` 和 `04_summary/`。
 
-   
-### CQ2Term
- 
-Given a single competency question, the LLM outputs the classes and properties needed to answer it. The output is evaluated against the explicit term set annotated for that CQ.
- 
-1. [`ClassProperty`](https://w3id.org/cq4oe/dimension/ClassProperty)
-   1. Target: Do the generated classes and properties match the gold ones for the CQ?
-   2. Metrics: [`HardMatch`](https://w3id.org/cq4oe/metric/HardMatch), [`SequenceMatch`](https://w3id.org/cq4oe/metric/SequenceMatch), [`LevenshteinDistance`](https://w3id.org/cq4oe/metric/LevenshteinDistance), [`JaroWinklerDistance`](https://w3id.org/cq4oe/metric/JaroWinklerDistance), [`SemanticCosineSimilarity`](https://w3id.org/cq4oe/metric/SemanticCosineSimilarity), [`AggregatedTop3`](https://w3id.org/cq4oe/metric/AggregatedTop3); global [`Precision`](https://w3id.org/cq4oe/metric/Precision), [`Recall`](https://w3id.org/cq4oe/metric/Recall), [`F1`](https://w3id.org/cq4oe/metric/F1).
-2. [`CQCoverage`](https://w3id.org/cq4oe/dimension/CQCoverage)
-   1. Target: Are the required terms generated under the CQ that requires them?
-   2. Metrics: [`AtLeastOneCoverage`](https://w3id.org/cq4oe/metric/AtLeastOneCoverage), [`MeanCoverage`](https://w3id.org/cq4oe/metric/MeanCoverage), [`FullCoverage`](https://w3id.org/cq4oe/metric/FullCoverage).
+## 贡献结果
 
+如果希望提交新的评测结果，请创建 Issue 并提供：每个本体的生成文件、对应任务（CQ2Term 或 CQ2Onto），以及模型和生成方法说明。审核通过后，结果会加入仓库。
 
-## Acknowledgement
+## 相关页面
 
-This work was supported by the grant [SOEL: Supporting Ontology Engineering with Large Language Models](https://w3id.org/soel) PID2023-152703NA-I00 funded by MCIN/AEI/10.13039/501100011033 and by ERDF/UE. The authors would also like to thank the EDINT (Espacios de Datos para las Infraestructuras Urbanas Inteligentes) ontology development team for sharing the project resources for evaluation purposes.
+- [在线排行榜](https://oeg-upm.github.io/cq4oe-benchmark/leaderboard/)
+- [使用说明](usage_instructions.md)
+- [设计规格](docs/superpowers/specs/2026-10-30-local-web-evaluator-design.md)
+- [实施计划](docs/superpowers/plans/2026-10-30-local-web-evaluator.md)
+
+## 致谢
+
+本项目得到 SOEL 项目资助：[Supporting Ontology Engineering with Large Language Models](https://w3id.org/soel)，项目编号 PID2023-152703NA-I00，由 MCIN/AEI/10.13039/501100011033 和 ERDF/UE 资助。感谢 EDINT（Espacios de Datos para las Infraestructuras Urbanas Inteligentes）本体开发团队分享评测资源。

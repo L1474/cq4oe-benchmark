@@ -3,14 +3,95 @@
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const itemKey = ({ task, domain }) => `${task}:${domain}`;
   const cqCount = (detail) => detail.cq_count ?? detail.count;
+  const TASK_LABELS = { cq2term: "CQ2Term", cq2onto: "CQ2Onto" };
+  const STATUS_LABELS = {
+    draft: "草稿", queued: "排队中", running: "运行中", completed: "已完成", partial: "部分完成", failed: "失败",
+    pending: "待处理", blocked: "已阻塞", started: "已开始",
+  };
+  const DIMENSION_LABELS = {
+    ClassProperty: "类与属性", PropertyCharacteristics: "属性特征", Triple: "三元组", Axiom: "公理",
+    HierarchyClosure: "层级闭包", CQCoverage: "CQ 覆盖率", class_property: "类与属性",
+    property_characteristics: "属性特征", triple: "三元组", axiom: "公理", hierarchy: "层级闭包", cq_coverage: "CQ 覆盖率",
+  };
+  const METRIC_LABELS = {
+    hard_match: "硬匹配", sequence_match: "序列匹配", levenshtein_distance: "Levenshtein 距离",
+    jaro_winkler_distance: "Jaro-Winkler 距离", semantic_cosine_similarity: "语义余弦相似度",
+    aggregated_top3: "Top-3 聚合", precision: "精确率", recall: "召回率", f1: "F1",
+    embedding_diagnostic: "嵌入诊断", at_least_one_coverage: "至少一项覆盖率", mean_coverage: "平均覆盖率",
+    full_coverage: "完整覆盖率", closure_rescue_coverage: "闭包补救覆盖率", coverage: "覆盖率",
+  };
+  const LAYER_LABELS = {
+    layer1: "第 1 层", layer2: "第 2 层", layer3: "第 3 层", layer4: "第 4 层", layer5: "第 5 层", layer6: "第 6 层",
+    layer1_exact: "第 1 层（精确）", layer2_pair: "第 2 层（配对）", layer3_strict: "第 3 层（严格）",
+    layer4_atomic: "第 4 层（原子）", layer5_closure: "第 5 层（闭包）", layer6_cq: "第 6 层（CQ）",
+  };
+  const SCOPE_LABELS = {
+    global: "整体", per_cq: "按 CQ", per_item: "按条目", alignment_conditioned: "在对齐条件下",
+    gold_vocabulary: "金标准词汇", predicted_vocabulary: "预测词汇", closure: "推理闭包",
+  };
+  const label = (value, mapping) => mapping[value] || value || "";
+  const taskLabel = (value) => label(value, TASK_LABELS);
+  const statusLabel = (value) => label(value, STATUS_LABELS);
+  const dimensionLabel = (value) => label(value, DIMENSION_LABELS);
+  const metricLabel = (value) => label(value, METRIC_LABELS);
+  const layerLabel = (value) => label(value, LAYER_LABELS);
+  const scopeLabel = (value) => label(value, SCOPE_LABELS);
+  const localizeError = (message, status) => {
+    const text = String(message || "");
+    const replacements = [
+      [/Select an Agent and model\./, "请选择 Agent 和模型。"],
+      [/Select at least one benchmark item\./, "请至少选择一个评测条目。"],
+      [/Select a domain\./, "请选择领域。"],
+      [/That task and domain are already selected\./, "该任务和领域已经选择。"],
+      [/Choose a file for /, "请选择文件："],
+      [/Run queued\./, "运行已进入队列。"],
+      [/No runs match these filters\./, "没有符合筛选条件的运行记录。"],
+      [/No comparable run/, "没有可对比的运行记录"],
+      [/Server rejected confirmation/, "服务器拒绝了 CQ 确认。"],
+      [/Keep draft for retry/, "请保留草稿并重试。"],
+      [/Missing gold input required for provenance: /, "缺少评测所需的金标准输入："],
+      [/A run must contain at least one item\./, "一次运行至少需要一个评测条目。"],
+      [/Unsupported task: /, "不支持的任务："],
+      [/Invalid task or domain: /, "任务或领域无效："],
+      [/Agent not found\./, "找不到 Agent。"],
+      [/A model is required for the selected Agent\./, "所选 Agent 必须配置模型。"],
+      [/Model does not belong to the selected Agent\./, "该模型不属于所选 Agent。"],
+      [/Run item not found\./, "找不到运行条目。"],
+      [/Uploads and confirmations are allowed only for draft runs\./, "只有草稿状态的运行可以上传文件或确认 CQ。"],
+      [/Invalid upload filename\./, "上传文件名无效。"],
+      [/Unsupported file extension for /, "不支持的文件扩展名："],
+      [/Upload exceeds configured size limit\./, "上传文件超过大小限制。"],
+      [/CQ2Term upload is not valid UTF-8 JSON\./, "CQ2Term 上传文件不是有效的 UTF-8 JSON。"],
+      [/CQ2Term upload is invalid: /, "CQ2Term 上传文件无效："],
+      [/Ontology upload cannot be parsed: /, "无法解析本体上传文件："],
+      [/CQ confirmation applies only to CQ2Onto items\./, "CQ 确认只适用于 CQ2Onto 条目。"],
+      [/CQ confirmation is incomplete: /, "CQ 确认未完成："],
+      [/Run is not a draft\./, "运行不是草稿状态。"],
+      [/requires an upload\./, "需要先上传文件。"],
+      [/requires complete CQ confirmation\./, "需要完成全部 CQ 确认。"],
+      [/Run item upload is not valid: /, "运行条目上传文件无效："],
+      [/selected runs must use compatible task and configuration scopes/, "所选运行必须使用兼容的任务和配置范围。"],
+      [/selected runs must use matching gold fingerprints/, "所选运行的金标准指纹必须一致。"],
+      [/selected runs have no shared task\/domain items/, "所选运行没有共同的任务 / 领域条目。"],
+      [/selected runs must use matching evaluator versions/, "所选运行必须使用相同的评测器版本。"],
+      [/Domain not found/, "找不到领域。"],
+      [/Task not found for domain/, "该领域没有此任务。"],
+      [/CQ bundle not found/, "找不到 CQ 包。"],
+      [/Artifact file not found/, "找不到产物文件。"],
+      [/Artifact not found/, "找不到产物。"],
+      [/Request failed \((\d+)\)/, "请求失败（HTTP $1）"],
+    ];
+    for (const [pattern, replacement] of replacements) if (pattern.test(text)) return text.replace(pattern, replacement);
+    return text || `请求失败（HTTP ${status}）`;
+  };
 
   async function request(url, options = {}) {
     const response = await fetch(url, options);
     if (!response.ok) {
-      let message = `Request failed (${response.status})`;
+      let message = `请求失败（HTTP ${response.status}）`;
       try {
         const body = await response.json();
-        message = body.detail || body.message || message;
+        message = localizeError(body.detail || body.message || message, response.status);
       } catch (_) {}
       throw new Error(message);
     }
@@ -116,7 +197,7 @@
       idInput.value = agent?.id || "";
       nameInput.value = agent?.name || "";
       descriptionInput.value = agent?.description || "";
-      $("#agent-form-title").textContent = agent ? "Edit Agent" : "New Agent";
+      $("#agent-form-title").textContent = agent ? "编辑 Agent" : "新建 Agent";
       form.hidden = false;
       nameInput.focus();
     };
@@ -132,7 +213,7 @@
         if (!agents.length) {
           const empty = document.createElement("p");
           empty.className = "muted";
-          empty.textContent = "No Agents configured.";
+          empty.textContent = "暂未配置 Agent。";
           list.append(empty);
           return;
         }
@@ -153,9 +234,9 @@
           }
           const actions = document.createElement("div");
           actions.className = "agent-card-actions";
-          actions.append(button("Edit", "button small", () => openForm(agent)));
-          actions.append(button("Delete", "button small", async () => {
-            if (!window.confirm(`Delete Agent “${agent.name}” and its models?`)) return;
+          actions.append(button("编辑", "button small", () => openForm(agent)));
+          actions.append(button("删除", "button small", async () => {
+            if (!window.confirm(`确定删除 Agent“${agent.name}”及其模型吗？`)) return;
             try { await request(`/api/agents/${encodeURIComponent(agent.id)}`, { method: "DELETE" }); await render(); }
             catch (err) { showNotice(error, err.message); }
           }));
@@ -164,8 +245,8 @@
           const modelHeading = document.createElement("div");
           modelHeading.className = "model-heading";
           const modelTitle = document.createElement("h3");
-          modelTitle.textContent = "Models";
-          modelHeading.append(modelTitle, button("＋ Add model", "text-button", () => addModel(agent.id)));
+          modelTitle.textContent = "模型";
+          modelHeading.append(modelTitle, button("＋ 添加模型", "text-button", () => addModel(agent.id)));
           card.append(modelHeading);
           const modelList = document.createElement("div");
           try {
@@ -174,7 +255,7 @@
             if (!models.length) {
               const empty = document.createElement("p");
               empty.className = "muted";
-              empty.textContent = "No models configured.";
+              empty.textContent = "暂未配置模型。";
               modelList.append(empty);
             }
           } catch (err) {
@@ -201,8 +282,8 @@
       });
       const actions = document.createElement("div");
       actions.className = "model-row-actions";
-      actions.append(button("Edit", "button small", () => editModel(model)));
-      actions.append(button("Remove", "button small", async () => {
+      actions.append(button("编辑", "button small", () => editModel(model)));
+      actions.append(button("移除", "button small", async () => {
         try { await request(`/api/models/${encodeURIComponent(model.id)}`, { method: "DELETE" }); await render(); }
         catch (err) { showNotice(error, err.message); }
       }));
@@ -211,11 +292,11 @@
     }
 
     async function addModel(agentId, existing = null) {
-      const modelName = window.prompt("Model name", existing?.name || "");
+      const modelName = window.prompt("模型名称", existing?.name || "");
       if (modelName === null) return;
-      const modelId = window.prompt("Model ID", existing?.model_id || "");
+      const modelId = window.prompt("模型 ID", existing?.model_id || "");
       if (modelId === null) return;
-      const provider = window.prompt("Provider", existing?.provider || "ollama");
+      const provider = window.prompt("提供方", existing?.provider || "ollama");
       if (provider === null) return;
       try {
         const body = { name: modelName.trim(), model_id: modelId.trim(), provider: provider.trim() || "ollama" };
@@ -279,7 +360,7 @@
     agentSelect.addEventListener("change", async () => {
       const selectedAgent = agentSelect.value;
       const requestId = ++modelRequest;
-      modelSelect.replaceChildren(new Option("Select model", ""));
+      modelSelect.replaceChildren(new Option("选择模型", ""));
       modelSelect.disabled = true;
       if (!selectedAgent) return;
       try {
@@ -312,7 +393,7 @@
       if (!current.length) {
         const empty = document.createElement("p");
         empty.className = "muted";
-        empty.textContent = "Select one or more benchmark items.";
+        empty.textContent = "请先选择一个或多个评测条目。";
         selectedItemsNode.append(empty);
         return;
       }
@@ -325,20 +406,20 @@
         const title = document.createElement("div");
         title.className = "selected-item-title";
         const strong = document.createElement("strong");
-        strong.textContent = `${item.domain.replaceAll("_", " ")} · ${item.task.toUpperCase()}`;
+        strong.textContent = `${item.domain.replaceAll("_", " ")} · ${taskLabel(item.task)}`;
         const count = document.createElement("span");
         count.dataset.itemCount = item.task;
-        count.textContent = detail ? `${cqCount(detail)} CQs` : "Loading CQ count…";
+        count.textContent = detail ? `${cqCount(detail)} 个 CQ` : "正在加载 CQ 数量…";
         title.append(strong, count);
         const uploadLabel = document.createElement("label");
-        uploadLabel.textContent = item.task === "cq2term" ? "Prediction JSON" : "Ontology file";
+        uploadLabel.textContent = item.task === "cq2term" ? "预测 JSON 文件" : "本体文件";
         const upload = document.createElement("input");
         upload.type = "file";
         upload.required = true;
         upload.accept = item.task === "cq2term" ? ".json,application/json" : ".owl,.rdf,.xml,.ttl,.nt,.n3";
         upload.dataset.itemUpload = item.task;
         upload.dataset.uploadDomain = item.domain;
-        upload.setAttribute("aria-label", `${item.task.toUpperCase()} prediction file for ${item.domain}`);
+        upload.setAttribute("aria-label", `${taskLabel(item.task)} 在 ${item.domain} 的预测文件`);
         upload.addEventListener("change", () => {
           if (upload.files[0]) files.set(key, upload.files[0]);
           else files.delete(key);
@@ -355,18 +436,18 @@
         const cqButton = document.createElement("button");
         cqButton.type = "button";
         cqButton.className = "text-button";
-        cqButton.textContent = "View CQs";
+        cqButton.textContent = "查看 CQ";
         cqButton.addEventListener("click", () => openDrawer(item));
         const bundle = document.createElement("a");
         bundle.className = "button small";
         bundle.href = `/api/catalog/${encodeURIComponent(item.task)}/${encodeURIComponent(item.domain)}/bundle`;
-        bundle.textContent = "Download CQs";
-        bundle.setAttribute("aria-label", `Download ${item.task} CQ bundle for ${item.domain}`);
+        bundle.textContent = "下载 CQ 包";
+        bundle.setAttribute("aria-label", `下载 ${item.domain} 的 ${taskLabel(item.task)} CQ 包`);
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "icon-button remove-item";
         remove.textContent = "×";
-        remove.setAttribute("aria-label", `Remove ${item.task} ${item.domain}`);
+        remove.setAttribute("aria-label", `移除 ${taskLabel(item.task)} ${item.domain}`);
         remove.disabled = Boolean(activeRun);
         remove.addEventListener("click", () => {
           selectedItems.delete(key);
@@ -389,13 +470,13 @@
           return sum + (detail ? cqCount(detail) : 0);
         }, 0);
         const target = $(`[data-cq-count-for="${task}"]`);
-        if (target) target.textContent = `${total} CQs`;
+        if (target) target.textContent = `${total} 个 CQ`;
       }
     }
 
     function refreshDomainOptions() {
       const prior = domainSelect.value;
-      domainSelect.replaceChildren(new Option("Select domain", ""));
+      domainSelect.replaceChildren(new Option("选择领域", ""));
       for (const domain of domainIndex) {
         if (!domain.counts[taskSelect.value]) continue;
         domainSelect.add(new Option(domain.name, domain.slug));
@@ -415,9 +496,9 @@
     $("#add-item").addEventListener("click", async () => {
       hideNotice(errorNode);
       const item = { task: taskSelect.value, domain: domainSelect.value };
-      if (!item.domain) { showNotice(errorNode, "Select a domain."); return; }
+      if (!item.domain) { showNotice(errorNode, "请选择领域。"); return; }
       const key = itemKey(item);
-      if (selectedItems.has(key)) { showNotice(errorNode, "That task and domain are already selected."); return; }
+      if (selectedItems.has(key)) { showNotice(errorNode, "该任务和领域已经选择。"); return; }
       selectedItems.set(key, item);
       renderSelected();
       refreshSelectedCounts();
@@ -488,7 +569,7 @@
         tab.setAttribute("role", "tab");
         tab.dataset.drawerTask = task;
         tab.setAttribute("aria-selected", String(task === item.task));
-        tab.textContent = `${task.toUpperCase()} ${cqCount(detail)}`;
+        tab.textContent = `${taskLabel(task)} ${cqCount(detail)} 个`;
         tab.addEventListener("click", () => showDrawerTask(task, item.domain));
         $("#drawer-tabs").append(tab);
       }
@@ -503,18 +584,18 @@
       const meta = document.createElement("div");
       meta.className = "cq-panel-meta";
       const count = document.createElement("strong");
-      count.textContent = `${cqCount(detail)} CQs`;
+      count.textContent = `${cqCount(detail)} 个 CQ`;
       const bundle = document.createElement("a");
       bundle.className = "button small";
       bundle.href = `/api/catalog/${encodeURIComponent(task)}/${encodeURIComponent(domain)}/bundle`;
-      bundle.textContent = "Download bundle";
+      bundle.textContent = "下载 CQ 包";
       meta.append(count, bundle);
       host.append(meta);
       const format = document.createElement("p");
       format.className = "input-format";
       format.textContent = task === "cq2term"
-        ? "Prediction input: JSON with CQ IDs and class/property term lists"
-        : "Prediction input: OWL, RDF/XML, Turtle, N-Triples, or N3";
+        ? "预测产物格式：UTF-8 JSON，包含 CQ ID 以及 class/property 词项列表"
+        : "预测产物格式：OWL、RDF/XML、Turtle、N-Triples 或 N3";
       host.append(format);
       const list = document.createElement("ol");
       list.className = task === "cq2onto" && activeConfirmation?.item.domain === domain ? "cq-checklist" : "cq-list";
@@ -569,7 +650,7 @@
       if (!item) return;
       const detail = details.get(itemKey(item));
       const count = activeConfirmation.confirmedIds.size;
-      $("#drawer-progress").textContent = `${count} / ${cqCount(detail)} provided`;
+      $("#drawer-progress").textContent = `${count} / ${cqCount(detail)} 个 CQ 已提供`;
       $("#confirmation-count").textContent = `${count} / ${cqCount(detail)}`;
       $("#save-confirmation").disabled = !allConfirmed(detail.cqs, activeConfirmation.confirmedIds);
       $("#accept-confirmation").disabled = !activeConfirmation.saved;
@@ -616,7 +697,7 @@
       const detail = details.get(key);
       activeConfirmation = { item, runItem, confirmedIds: new Set(confirmedItems.get(key) || []),
         saved: confirmedItems.has(key) };
-      $("#confirmation-title").textContent = `Confirm ${domain.replaceAll("_", " ")} CQs provided`;
+      $("#confirmation-title").textContent = `确认 ${domain.replaceAll("_", " ")} 已提供的 CQ`;
       updateConfirmationProgress();
       showModal();
     }
@@ -641,14 +722,14 @@
           currentKey = key;
           if (uploaded.has(key)) continue;
           const file = files.get(key);
-          if (!file) throw new Error(`Choose a file for ${key.replace(":", " · ")}.`);
+          if (!file) throw new Error(`请选择文件：${key.replace(":", " · ")}。`);
           const body = new FormData();
           body.append("file", file);
           await request(`/api/runs/${encodeURIComponent(activeRun.id)}/items/${encodeURIComponent(runItem.id)}/upload`, { method: "POST", body });
           uploaded.add(key);
         }
         const queued = await request(`/api/runs/${encodeURIComponent(activeRun.id)}/start`, { method: "POST" });
-        showNotice(noticeNode, "Run queued.");
+        showNotice(noticeNode, "运行已进入队列。");
         window.location.assign(`/runs/${encodeURIComponent(queued.id)}`);
       } catch (err) {
         showNotice(errorNode, err.message);
@@ -674,17 +755,17 @@
       if (activeRun) {
         const incomplete = [...runItems.keys()].filter((key) => key.startsWith("cq2onto:") && !files.has(key));
         if (incomplete.length) {
-          showNotice(errorNode, `Choose a file for ${incomplete[0].replace(":", " · ")}.`);
+          showNotice(errorNode, `请选择文件：${incomplete[0].replace(":", " · ")}。`);
           return;
         }
         await beginConfirmations();
         return;
       }
       const items = selection();
-      if (!agentSelect.value || !modelSelect.value) { showNotice(errorNode, "Select an Agent and model."); return; }
-      if (!items.length) { showNotice(errorNode, "Select at least one benchmark item."); return; }
+      if (!agentSelect.value || !modelSelect.value) { showNotice(errorNode, "请选择 Agent 和模型。"); return; }
+      if (!items.length) { showNotice(errorNode, "请至少选择一个评测条目。"); return; }
       const missing = items.find((item) => !files.has(itemKey(item)));
-      if (missing) { showNotice(errorNode, `Choose a file for ${itemKey(missing)}.`); return; }
+      if (missing) { showNotice(errorNode, `请选择文件：${itemKey(missing)}。`); return; }
       submissionPending = true;
       const prepareButton = $("#prepare-run");
       prepareButton.disabled = true;
@@ -730,7 +811,7 @@
       if (window.location.pathname !== path) return;
       try {
         const response = await fetch(path, { headers: { Accept: "text/html" } });
-        if (!response.ok) throw new Error(`Run detail refresh failed (${response.status})`);
+        if (!response.ok) throw new Error(`运行详情刷新失败（HTTP ${response.status}）`);
         const next = new DOMParser().parseFromString(await response.text(), "text/html");
         const nextSummary = next.querySelector(".detail-summary[data-run-id]");
         const currentSummary = $(".detail-summary[data-run-id]");
@@ -773,32 +854,32 @@
           row.dataset.runId = run.id;
           const checkCell = document.createElement("td");
           const check = document.createElement("input");
-          check.type = "checkbox"; check.checked = selected.has(run.id); check.setAttribute("aria-label", `Select run ${run.id}`);
+          check.type = "checkbox"; check.checked = selected.has(run.id); check.setAttribute("aria-label", `选择运行 ${run.id}`);
           check.addEventListener("change", () => { check.checked ? selected.add(run.id) : selected.delete(run.id); updateCompare(); });
           checkCell.append(check);
           const link = (text, href) => { const a = document.createElement("a"); a.href = href; a.textContent = text; return a; };
           const created = document.createElement("td"); created.textContent = new Date(run.created_at).toLocaleString();
           const agent = document.createElement("td"); agent.append(document.createTextNode(`${run.agent_name} / ${run.model_name}`));
-          const taskDomain = document.createElement("td"); taskDomain.textContent = run.items.map((item) => `${item.task.toUpperCase()} / ${item.domain}`).join(", ");
-          const state = document.createElement("td"); state.textContent = run.status;
-          const metrics = document.createElement("td"); metrics.textContent = run.metrics.filter((metric) => ["f1", "precision", "recall", "coverage"].includes(metric.metric_name)).map((metric) => `${metric.task}/${metric.domain} ${metric.dimension} ${metric.metric_name}: ${metric.value ?? "—"}`).join(" · ") || "—";
+          const taskDomain = document.createElement("td"); taskDomain.textContent = run.items.map((item) => `${taskLabel(item.task)} / ${item.domain}`).join(", ");
+          const state = document.createElement("td"); state.textContent = statusLabel(run.status);
+          const metrics = document.createElement("td"); metrics.textContent = run.metrics.filter((metric) => ["f1", "precision", "recall", "coverage"].includes(metric.metric_name)).map((metric) => `${taskLabel(metric.task)}/${metric.domain} ${dimensionLabel(metric.dimension)} ${metricLabel(metric.metric_name)}：${metric.value ?? "—"}`).join(" · ") || "—";
           const trend = document.createElement("td");
           if (run.trend.previous_run_id) {
-            trend.append(link(`vs ${run.trend.previous_run_id.slice(0, 8)}`, `/compare?run_ids=${encodeURIComponent(run.trend.previous_run_id)},${encodeURIComponent(run.id)}`));
+            trend.append(link(`对比 ${run.trend.previous_run_id.slice(0, 8)}`, `/compare?run_ids=${encodeURIComponent(run.trend.previous_run_id)},${encodeURIComponent(run.id)}`));
             for (const delta of run.trend.deltas || []) {
               const indicator = document.createElement("span");
               indicator.className = delta.improved === true ? "trend-improved" : delta.improved === false ? "trend-declined" : "trend-neutral";
-              indicator.textContent = ` ${delta.improved === true ? "↑" : delta.improved === false ? "↓" : "·"} ${delta.key[4]} ${delta.delta > 0 ? "+" : ""}${Number(delta.delta).toFixed(3)}`;
+              indicator.textContent = ` ${delta.improved === true ? "↑" : delta.improved === false ? "↓" : "·"} ${metricLabel(delta.key[4])} ${delta.delta > 0 ? "+" : ""}${Number(delta.delta).toFixed(3)}`;
               trend.append(indicator);
             }
-          } else trend.textContent = $("#trend-toggle").checked ? "No comparable run" : "Off";
+          } else trend.textContent = $("#trend-toggle").checked ? "没有可对比的记录" : "已关闭";
           const runLink = link(run.id.slice(0, 8), `/runs/${encodeURIComponent(run.id)}`);
           created.prepend(runLink);
           row.append(checkCell, created, agent, taskDomain, state, metrics, trend); body.append(row);
         }
-        if (!response.items.length) { const row = document.createElement("tr"); const cell = document.createElement("td"); cell.colSpan = 7; cell.textContent = "No runs match these filters."; row.append(cell); body.append(row); }
-        $("#record-count").textContent = `${response.total} records`;
-        $("#records-page").textContent = `Page ${response.page} of ${Math.max(1, Math.ceil(response.total / response.page_size))}`;
+        if (!response.items.length) { const row = document.createElement("tr"); const cell = document.createElement("td"); cell.colSpan = 7; cell.textContent = "没有符合筛选条件的运行记录。"; row.append(cell); body.append(row); }
+        $("#record-count").textContent = `共 ${response.total} 条记录`;
+        $("#records-page").textContent = `第 ${response.page} 页，共 ${Math.max(1, Math.ceil(response.total / response.page_size))} 页`;
         $("#records-prev").disabled = page <= 1;
         $("#records-next").disabled = page * response.page_size >= response.total;
         updateCompare();
@@ -812,7 +893,7 @@
     $("#records-next").addEventListener("click", () => { page += 1; refresh(); });
     $("#compare-selected").addEventListener("click", () => { window.location.assign(`/compare?run_ids=${[...selected].map(encodeURIComponent).join(",")}`); });
     $("#filter-agent").addEventListener("change", async () => {
-      const select = $("#filter-model"); select.replaceChildren(new Option("All models", ""));
+      const select = $("#filter-model"); select.replaceChildren(new Option("全部模型", ""));
       if ($("#filter-agent").value) {
         const models = await request(`/api/agents/${encodeURIComponent($("#filter-agent").value)}/models`);
         for (const model of models) select.add(new Option(model.name, model.id));
@@ -828,22 +909,22 @@
     if (!root || !body) return;
     try {
       const result = await request("/api/runs/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_ids: root.dataset.runIds.split(",") }) });
-      $("#compare-intersection").textContent = `${result.intersection_count} shared domain${result.intersection_count === 1 ? "" : "s"}: ${result.domains.join(", ") || "none"}`;
+      $("#compare-intersection").textContent = `共有 ${result.intersection_count} 个领域：${result.domains.join(", ") || "无"}`;
       for (const run of result.runs) {
         const heading = $(`[data-compare-run-id="${run.id}"]`);
         if (!heading) continue;
         const context = document.createElement("small");
-        context.textContent = `${run.agent_name} / ${run.model_name} · config ${JSON.stringify(run.config)}`;
+        context.textContent = `${run.agent_name} / ${run.model_name} · 配置 ${JSON.stringify(run.config)}`;
         heading.append(context);
       }
       body.replaceChildren();
       for (const metric of result.metrics) {
         const row = document.createElement("tr");
-        const label = document.createElement("th"); label.textContent = `${metric.key[0]} / ${metric.key[1]} · ${metric.key[2]} · ${metric.key[3]} · ${metric.key[4]} · ${metric.key[6]}`; row.append(label);
+        const label = document.createElement("th"); label.textContent = `${taskLabel(metric.key[0])} / ${metric.key[1]} · ${dimensionLabel(metric.key[2])} · ${layerLabel(metric.key[3])} · ${metricLabel(metric.key[4])} · ${scopeLabel(metric.key[6])}`; row.append(label);
         for (const entry of metric.entries) { const cell = document.createElement("td"); cell.textContent = entry.value == null ? "—" : `${Number(entry.value).toFixed(4)}${entry.delta == null ? "" : ` (${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toFixed(4)})`}`; if (entry.improved === true) cell.classList.add("metric-improved"); if (entry.improved === false) cell.classList.add("metric-declined"); row.append(cell); }
         body.append(row);
       }
-      if (!result.metrics.length) body.innerHTML = `<tr><td colspan="${result.run_ids.length + 1}">No compatible metrics in shared domains.</td></tr>`;
+      if (!result.metrics.length) body.innerHTML = `<tr><td colspan="${result.run_ids.length + 1}">共同领域中没有可对比的指标。</td></tr>`;
     } catch (error) { body.textContent = error.message; }
   }
 

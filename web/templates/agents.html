@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Agents · CQ4OE Evaluator{% endblock %}
+{% block title %}Agent 管理 · CQ4OE 评测台{% endblock %}
 {% block content %}
 <section class="page-heading">
-  <div><p class="eyebrow">Configuration</p><h1>Agents</h1></div>
-  <button class="button primary" type="button" id="new-agent">＋ New Agent</button>
+  <div><p class="eyebrow">配置</p><h1>Agent 管理</h1></div>
+  <button class="button primary" type="button" id="new-agent">＋ 新建 Agent</button>
 </section>
 <form id="agent-form" class="form-panel" hidden>
-  <div class="form-heading"><h2 id="agent-form-title">New Agent</h2><button class="icon-button" type="button" id="cancel-agent" aria-label="Close">×</button></div>
+  <div class="form-heading"><h2 id="agent-form-title">新建 Agent</h2><button class="icon-button" type="button" id="cancel-agent" aria-label="关闭">×</button></div>
   <input type="hidden" id="agent-id">
-  <label>Agent name<input id="agent-name" name="name" required maxlength="120"></label>
-  <label>Description<input id="agent-description" name="description" maxlength="300"></label>
-  <div class="form-actions"><button class="button" type="button" id="cancel-agent-secondary">Cancel</button><button class="button primary" type="submit">Save Agent</button></div>
+  <label>Agent 名称<input id="agent-name" name="name" required maxlength="120"></label>
+  <label>描述<input id="agent-description" name="description" maxlength="300"></label>
+  <div class="form-actions"><button class="button" type="button" id="cancel-agent-secondary">取消</button><button class="button primary" type="submit">保存 Agent</button></div>
 </form>
 <div id="agent-error" class="notice error" role="alert" hidden></div>
-<div id="agents-list" class="agent-list" aria-live="polite"><p class="muted">Loading Agents…</p></div>
+<div id="agents-list" class="agent-list" aria-live="polite"><p class="muted">正在加载 Agent…</p></div>
 {% endblock %}

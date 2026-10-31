@@ -1,21 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}CQ4OE Evaluator{% endblock %}</title>
+  <title>{% block title %}CQ4OE 评测台{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="/runs/new">CQ4OE <span>Evaluator</span></a>
-      <nav class="primary-nav" aria-label="Primary navigation">
-        <a href="/runs/new" {% if request.url.path == '/runs/new' %}aria-current="page"{% endif %}>Run</a>
-        <a href="/records" {% if request.url.path.startswith('/records') or request.url.path.startswith('/runs/') %}aria-current="page"{% endif %}>Records</a>
-        <a href="/domains" {% if request.url.path.startswith('/domains') %}aria-current="page"{% endif %}>Domains</a>
-        <a href="/agents" {% if request.url.path == '/agents' %}aria-current="page"{% endif %}>Agent Management</a>
+      <a class="brand" href="/runs/new">CQ4OE <span>评测台</span></a>
+      <nav class="primary-nav" aria-label="主导航">
+        <a href="/runs/new" {% if request.url.path == '/runs/new' %}aria-current="page"{% endif %}>运行</a>
+        <a href="/records" {% if request.url.path.startswith('/records') or request.url.path.startswith('/runs/') %}aria-current="page"{% endif %}>记录</a>
+        <a href="/domains" {% if request.url.path.startswith('/domains') %}aria-current="page"{% endif %}>领域</a>
+        <a href="/agents" {% if request.url.path == '/agents' %}aria-current="page"{% endif %}>Agent 管理</a>
       </nav>
     </aside>
     <main class="page-content">

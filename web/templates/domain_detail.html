@@ -1,27 +1,27 @@
 {% extends "base.html" %}
-{% block title %}{{ domain.name }} · Domains{% endblock %}
+{% block title %}{{ domain.name }} · 领域{% endblock %}
 {% block content %}
-<div class="breadcrumbs"><a href="/domains">Domains</a><span>/</span><span>{{ domain.name }}</span></div>
-<section class="page-heading"><div><p class="eyebrow">Benchmark domain</p><h1>{{ domain.name }}</h1></div><a class="button" href="/runs/new?domain={{ domain.slug }}">New run</a></section>
+<div class="breadcrumbs"><a href="/domains">领域</a><span>/</span><span>{{ domain.name }}</span></div>
+<section class="page-heading"><div><p class="eyebrow">评测领域</p><h1>{{ domain.name }}</h1></div><a class="button" href="/runs/new?domain={{ domain.slug }}">新建运行</a></section>
 <div class="domain-task-grid">
 {% for task_name, task in domain.tasks.items() %}
   <section class="task-summary">
-    <div class="task-summary-heading"><div><h2>{{ task_name|upper }}</h2><span class="muted">{{ task.count }} competency questions</span></div><a class="button small" href="/api/catalog/{{ task_name }}/{{ domain.slug }}/bundle">Download bundle</a></div>
-    <p class="input-format"><strong>Input format</strong>{% if task_name == 'cq2term' %} JSON with CQ IDs and class/property term lists{% else %} OWL, RDF/XML, Turtle, N-Triples, or N3{% endif %}</p>
-    <button class="text-button" type="button" data-open-task="{{ task_name }}">Open CQ checklist <span aria-hidden="true">→</span></button>
+    <div class="task-summary-heading"><div><h2>{{ task_name|task_label }}</h2><span class="muted">{{ task.count }} 个能力问题（CQ）</span></div><a class="button small" href="/api/catalog/{{ task_name }}/{{ domain.slug }}/bundle">下载 CQ 包</a></div>
+    <p class="input-format"><strong>输入格式</strong>{% if task_name == 'cq2term' %} UTF-8 JSON，包含 CQ ID 以及 class/property 词项列表{% else %} OWL、RDF/XML、Turtle、N-Triples 或 N3{% endif %}</p>
+    <button class="text-button" type="button" data-open-task="{{ task_name }}">查看 CQ 清单 <span aria-hidden="true">→</span></button>
   </section>
 {% endfor %}
 </div>
 <div class="drawer-scrim" id="drawer-scrim" hidden></div>
 <aside class="cq-drawer" id="cq-drawer" aria-labelledby="drawer-title" aria-modal="true" role="dialog" hidden>
-  <div class="drawer-header"><div><p class="eyebrow">{{ domain.slug }}</p><h2 id="drawer-title">Competency questions</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="Close CQ checklist">×</button></div>
-  <div class="drawer-tabs" role="tablist" aria-label="Task">
-    {% for task_name, task in domain.tasks.items() %}<button type="button" role="tab" data-task-tab="{{ task_name }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ task_name|upper }} <span>{{ task.count }}</span></button>{% endfor %}
+  <div class="drawer-header"><div><p class="eyebrow">{{ domain.slug }}</p><h2 id="drawer-title">能力问题清单</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭 CQ 清单">×</button></div>
+  <div class="drawer-tabs" role="tablist" aria-label="任务">
+    {% for task_name, task in domain.tasks.items() %}<button type="button" role="tab" data-task-tab="{{ task_name }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ task_name|task_label }} <span>{{ task.count }}</span></button>{% endfor %}
   </div>
   {% for task_name, task in domain.tasks.items() %}
   <section class="cq-task-panel" data-task-panel="{{ task_name }}" {% if not loop.first %}hidden{% endif %}>
-    <div class="cq-panel-meta"><strong>{{ task.count }} CQs</strong><a class="button small" href="/api/catalog/{{ task_name }}/{{ domain.slug }}/bundle">Download bundle</a></div>
-    <p class="input-format"><strong>Prediction input</strong>{% if task_name == 'cq2term' %} JSON with CQ IDs and class/property term lists{% else %} OWL, RDF/XML, Turtle, N-Triples, or N3{% endif %}</p>
+    <div class="cq-panel-meta"><strong>{{ task.count }} 个 CQ</strong><a class="button small" href="/api/catalog/{{ task_name }}/{{ domain.slug }}/bundle">下载 CQ 包</a></div>
+    <p class="input-format"><strong>预测产物格式</strong>{% if task_name == 'cq2term' %} UTF-8 JSON，包含 CQ ID 以及 class/property 词项列表{% else %} OWL、RDF/XML、Turtle、N-Triples 或 N3{% endif %}</p>
     <ol class="cq-list">{% for cq in task.cqs %}<li><code>{{ cq.id }}</code><p>{{ cq.question }}</p></li>{% endfor %}</ol>
   </section>
   {% endfor %}

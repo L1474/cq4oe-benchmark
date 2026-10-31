@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Run Records · CQ4OE Evaluator{% endblock %}
+{% block title %}运行记录 · CQ4OE 评测台{% endblock %}
 {% block content %}
 <header class="page-heading">
-  <div><p class="eyebrow">Evaluation history</p><h1>Run Records</h1></div>
-  <a class="button primary" href="/runs/new">New run</a>
+  <div><p class="eyebrow">评测历史</p><h1>运行记录</h1></div>
+  <a class="button primary" href="/runs/new">新建运行</a>
 </header>
-<section class="records-toolbar" aria-label="Record filters">
-  <label>Agent<select id="filter-agent"><option value="">All Agents</option>{% for agent in agents %}<option value="{{ agent.id }}">{{ agent.name }}</option>{% endfor %}</select></label>
-  <label>Model<select id="filter-model"><option value="">All models</option></select></label>
-  <label>Task<select id="filter-task"><option value="">All tasks</option>{% for task in tasks %}<option value="{{ task }}">{{ task|upper }}</option>{% endfor %}</select></label>
-  <label>Domain<select id="filter-domain"><option value="">All domains</option>{% for domain in domains %}<option value="{{ domain.slug }}">{{ domain.name }}</option>{% endfor %}</select></label>
-  <label>State<select id="filter-status"><option value="">All states</option>{% for state in ["draft", "queued", "running", "completed", "partial", "failed"] %}<option value="{{ state }}">{{ state|title }}</option>{% endfor %}</select></label>
-  <label>From<input type="date" id="filter-from"></label>
-  <label>To<input type="date" id="filter-to"></label>
-  <label class="toggle-label"><input type="checkbox" id="trend-toggle" checked> Show trend</label>
-  <button type="button" class="button" id="clear-record-filters">Clear</button>
+<section class="records-toolbar" aria-label="记录筛选">
+  <label>Agent<select id="filter-agent"><option value="">全部 Agent</option>{% for agent in agents %}<option value="{{ agent.id }}">{{ agent.name }}</option>{% endfor %}</select></label>
+  <label>模型<select id="filter-model"><option value="">全部模型</option></select></label>
+  <label>任务<select id="filter-task"><option value="">全部任务</option>{% for task in tasks %}<option value="{{ task }}">{{ task|task_label }}</option>{% endfor %}</select></label>
+  <label>领域<select id="filter-domain"><option value="">全部领域</option>{% for domain in domains %}<option value="{{ domain.slug }}">{{ domain.name }}</option>{% endfor %}</select></label>
+  <label>状态<select id="filter-status"><option value="">全部状态</option>{% for state in ["draft", "queued", "running", "completed", "partial", "failed"] %}<option value="{{ state }}">{{ state|status_label }}</option>{% endfor %}</select></label>
+  <label>开始日期<input type="date" id="filter-from"></label>
+  <label>结束日期<input type="date" id="filter-to"></label>
+  <label class="toggle-label"><input type="checkbox" id="trend-toggle" checked> 显示趋势</label>
+  <button type="button" class="button" id="clear-record-filters">清除筛选</button>
 </section>
-<div class="records-selection"><span id="record-count" class="muted">Loading records…</span><button type="button" class="button" id="compare-selected" disabled>Compare selected</button></div>
+<div class="records-selection"><span id="record-count" class="muted">正在加载记录…</span><button type="button" class="button" id="compare-selected" disabled>对比所选记录</button></div>
 <div class="table-scroll">
   <table class="data-table records-table">
-    <thead><tr><th>Select</th><th>Created</th><th>Agent / model</th><th>Task / domain</th><th>State</th><th>Metrics</th><th>Trend</th></tr></thead>
-    <tbody id="records-body"><tr><td colspan="7">Loading records…</td></tr></tbody>
+    <thead><tr><th>选择</th><th>创建时间</th><th>Agent / 模型</th><th>任务 / 领域</th><th>状态</th><th>指标</th><th>趋势</th></tr></thead>
+    <tbody id="records-body"><tr><td colspan="7">正在加载记录…</td></tr></tbody>
   </table>
 </div>
-<nav class="pagination" aria-label="Record pages"><button class="button" id="records-prev" disabled>Previous</button><span id="records-page">Page 1</span><button class="button" id="records-next" disabled>Next</button></nav>
+<nav class="pagination" aria-label="记录分页"><button class="button" id="records-prev" disabled>上一页</button><span id="records-page">第 1 页</span><button class="button" id="records-next" disabled>下一页</button></nav>
 <script>window.recordTasks = {{ tasks|tojson }};</script>
 {% endblock %}

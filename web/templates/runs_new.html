@@ -1,46 +1,46 @@
 {% extends "base.html" %}
-{% block title %}New run · CQ4OE Evaluator{% endblock %}
+{% block title %}新建运行 · CQ4OE 评测台{% endblock %}
 {% block content %}
-<section class="page-heading"><div><p class="eyebrow">Evaluation</p><h1>New run</h1></div></section>
+<section class="page-heading"><div><p class="eyebrow">评测</p><h1>新建运行</h1></div></section>
 <form id="run-form">
   <section class="workflow-section">
-    <div class="section-heading"><span class="step-number">1</span><div><h2>Agent and model</h2></div></div>
-    <div class="selection-row"><label>Agent<select id="run-agent" required><option value="">Select Agent</option></select></label><label>Model<select id="run-model" required disabled><option value="">Select model</option></select></label><a class="text-button" href="/agents">Manage Agents →</a></div>
+    <div class="section-heading"><span class="step-number">1</span><div><h2>选择 Agent 和模型</h2></div></div>
+    <div class="selection-row"><label>Agent<select id="run-agent" required><option value="">选择 Agent</option></select></label><label>模型<select id="run-model" required disabled><option value="">选择模型</option></select></label><a class="text-button" href="/agents">管理 Agent →</a></div>
   </section>
   <section class="workflow-section">
-    <div class="section-heading"><span class="step-number">2</span><div><h2>Benchmark items</h2></div></div>
+    <div class="section-heading"><span class="step-number">2</span><div><h2>选择评测条目</h2></div></div>
     <div class="item-picker">
-      <label>Task<select id="run-task"><option value="cq2term">CQ2Term</option><option value="cq2onto">CQ2Onto</option></select></label>
-      <label>Domain<select id="run-domain"><option value="">Select domain</option>{% for domain in domains %}<option value="{{ domain.slug }}">{{ domain.name }}</option>{% endfor %}</select></label>
-      <button class="button" type="button" id="add-item">＋ Add item</button>
+      <label>任务<select id="run-task"><option value="cq2term">CQ2Term</option><option value="cq2onto">CQ2Onto</option></select></label>
+      <label>领域<select id="run-domain"><option value="">选择领域</option>{% for domain in domains %}<option value="{{ domain.slug }}">{{ domain.name }}</option>{% endfor %}</select></label>
+      <button class="button" type="button" id="add-item">＋ 添加条目</button>
     </div>
     <div class="selected-counts" aria-live="polite">
-      <span>CQ2Term <strong data-cq-count-for="cq2term">0 CQs</strong></span>
-      <span>CQ2Onto <strong data-cq-count-for="cq2onto">0 CQs</strong></span>
+      <span>CQ2Term <strong data-cq-count-for="cq2term">0 个 CQ</strong></span>
+      <span>CQ2Onto <strong data-cq-count-for="cq2onto">0 个 CQ</strong></span>
     </div>
   </section>
   <section class="workflow-section">
-    <div class="section-heading"><span class="step-number">3</span><div><h2>Prediction files</h2></div></div>
-    <div id="selected-items" class="selected-items"><p class="muted">Select one or more benchmark items.</p></div>
-    <div class="form-actions run-actions"><button class="button primary" type="button" id="prepare-run">Prepare run</button></div>
+    <div class="section-heading"><span class="step-number">3</span><div><h2>上传预测产物</h2></div></div>
+    <div id="selected-items" class="selected-items"><p class="muted">请先选择一个或多个评测条目。</p></div>
+    <div class="form-actions run-actions"><button class="button primary" type="button" id="prepare-run">准备运行</button></div>
   </section>
 </form>
 <div id="run-notice" class="notice" role="status" hidden></div>
 <div id="run-error" class="notice error" role="alert" hidden></div>
 <div class="drawer-scrim" id="drawer-scrim" hidden></div>
 <aside class="cq-drawer" id="cq-drawer" aria-labelledby="drawer-title" aria-modal="true" role="dialog" hidden>
-  <div class="drawer-header"><div><p class="eyebrow" id="drawer-domain"></p><h2 id="drawer-title">CQ checklist</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="Close CQ checklist">×</button></div>
-  <div class="drawer-tabs" id="drawer-tabs" role="tablist" aria-label="Task"></div>
+  <div class="drawer-header"><div><p class="eyebrow" id="drawer-domain"></p><h2 id="drawer-title">CQ 清单</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭 CQ 清单">×</button></div>
+  <div class="drawer-tabs" id="drawer-tabs" role="tablist" aria-label="任务"></div>
   <div id="drawer-content"></div>
   <div id="drawer-error" class="notice error drawer-error" role="alert" tabindex="-1" hidden></div>
-  <div class="drawer-footer"><span class="muted" id="drawer-progress"></span><button class="button primary" id="save-confirmation" type="button" disabled>Confirm provided CQs</button></div>
+  <div class="drawer-footer"><span class="muted" id="drawer-progress"></span><button class="button primary" id="save-confirmation" type="button" disabled>确认已提供的 CQ</button></div>
 </aside>
 <section class="modal-backdrop" id="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" hidden>
   <div class="modal-panel">
-    <div class="modal-heading"><div><p class="eyebrow">CQ2Onto confirmation</p><h2 id="confirmation-title">Confirm questions provided</h2></div><button class="icon-button" type="button" id="close-confirmation" aria-label="Close confirmation">×</button></div>
-    <p class="confirmation-count"><strong id="confirmation-count">0 / 0</strong><span>CQs provided to the Agent</span></p>
-    <p class="confirmation-help"><a href="#cq-drawer" id="open-checklist">Open CQ checklist →</a></p>
-    <div class="form-actions"><button class="button" type="button" id="cancel-confirmation">Cancel</button><button class="button primary" type="button" id="accept-confirmation" disabled>Continue</button></div>
+    <div class="modal-heading"><div><p class="eyebrow">CQ2Onto 提交确认</p><h2 id="confirmation-title">确认已提供的问题</h2></div><button class="icon-button" type="button" id="close-confirmation" aria-label="关闭确认框">×</button></div>
+    <p class="confirmation-count"><strong id="confirmation-count">0 / 0</strong><span>个 CQ 已提供给 Agent</span></p>
+    <p class="confirmation-help"><a href="#cq-drawer" id="open-checklist">打开 CQ 清单 →</a></p>
+    <div class="form-actions"><button class="button" type="button" id="cancel-confirmation">取消</button><button class="button primary" type="button" id="accept-confirmation" disabled>继续</button></div>
   </div>
 </section>
 <script id="domain-index" type="application/json">{{ domains|tojson }}</script>

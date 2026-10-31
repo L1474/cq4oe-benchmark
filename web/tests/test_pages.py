@@ -59,8 +59,8 @@ def test_domain_detail_exposes_task_cqs_and_task_bundle_links(tmp_path):
         assert "ontology question private text?" in page
         assert "/api/catalog/cq2term/alpha/bundle" in page
         assert "/api/catalog/cq2onto/alpha/bundle" in page
-        assert "Prediction input" in page
-        assert "OWL, RDF/XML, Turtle, N-Triples, or N3" in page
+        assert "预测产物格式" in page
+        assert "OWL、RDF/XML、Turtle、N-Triples 或 N3" in page
 
 
 def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):

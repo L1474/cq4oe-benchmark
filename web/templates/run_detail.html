@@ -1,27 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Run {{ run.id[:8] }} · CQ4OE Evaluator{% endblock %}
+{% block title %}运行 {{ run.id[:8] }} · CQ4OE 评测台{% endblock %}
 {% block content %}
 <header class="page-heading">
-  <div><p class="eyebrow"><a href="/records">Run Records</a> / {{ run.id[:8] }}</p><h1>Run details</h1></div>
-  <a class="button" href="/compare?run_ids={{ run.id }}">Compare</a>
+  <div><p class="eyebrow"><a href="/records">运行记录</a> / {{ run.id[:8] }}</p><h1>运行详情</h1></div>
+  <a class="button" href="/compare?run_ids={{ run.id }}">对比</a>
 </header>
 <section class="detail-summary" data-run-id="{{ run.id }}" data-run-status="{{ run.status }}">
-  <dl><div><dt>Run ID</dt><dd><code>{{ run.id }}</code></dd></div><div><dt>State</dt><dd><span class="state-pill state-{{ run.status }}">{{ run.status|title }}</span></dd></div>
-  <div><dt>Agent</dt><dd>{{ agent.name }}</dd></div><div><dt>Model</dt><dd>{{ model.name }} <span class="muted">{{ model.model_id }}</span></dd></div>
-  <div><dt>Created</dt><dd>{{ run.created_at }}</dd></div><div><dt>Evaluator</dt><dd><code>{{ run.evaluator_version }}</code></dd></div><div><dt>Gold fingerprint</dt><dd><code>{{ run.gold_fingerprint }}</code></dd></div></dl>
+  <dl><div><dt>运行 ID</dt><dd><code>{{ run.id }}</code></dd></div><div><dt>状态</dt><dd><span class="state-pill state-{{ run.status }}">{{ run.status|status_label }}</span></dd></div>
+  <div><dt>Agent</dt><dd>{{ agent.name }}</dd></div><div><dt>模型</dt><dd>{{ model.name }} <span class="muted">{{ model.model_id }}</span></dd></div>
+  <div><dt>创建时间</dt><dd>{{ run.created_at }}</dd></div><div><dt>评测器版本</dt><dd><code>{{ run.evaluator_version }}</code></dd></div><div><dt>金标准指纹</dt><dd><code>{{ run.gold_fingerprint }}</code></dd></div></dl>
 </section>
-<section class="detail-section"><h2>Run inputs</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>Task</th><th>Domain</th><th>Item state</th><th>CQ confirmations</th><th>Package version</th></tr></thead><tbody>
-{% for item in run["items"] %}<tr><td>{{ item.task|upper }}</td><td>{{ item.domain }}</td><td>{{ item.status|title }}</td><td>{% if item.confirmed_cq_ids %}{{ item.confirmed_cq_ids|length }} confirmed{% else %}—{% endif %}</td><td><code>{{ item.bundle_sha256 or "—" }}</code></td></tr>{% endfor %}
+<section class="detail-section"><h2>运行输入</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>任务</th><th>领域</th><th>条目状态</th><th>CQ 确认数</th><th>评测包版本</th></tr></thead><tbody>
+{% for item in run["items"] %}<tr><td>{{ item.task|task_label }}</td><td>{{ item.domain }}</td><td>{{ item.status|status_label }}</td><td>{% if item.confirmed_cq_ids %}{{ item.confirmed_cq_ids|length }} 个已确认{% else %}—{% endif %}</td><td><code>{{ item.bundle_sha256 or "—" }}</code></td></tr>{% endfor %}
 </tbody></table></div>
-<details class="config-details"><summary>Evaluation configuration</summary><pre>{{ config|tojson(indent=2) }}</pre></details></section>
-<section class="detail-section"><h2>Metrics</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>Task</th><th>Domain</th><th>Dimension</th><th>Layer</th><th>Metric</th><th>Scope</th><th>Value</th></tr></thead><tbody>
-{% for metric in run.metrics %}<tr><td>{{ metric.task }}</td><td>{{ metric.domain }}</td><td>{{ metric.dimension }}</td><td>{{ metric.layer }}</td><td>{{ metric.metric_name }}</td><td>{{ metric.scope }}</td><td>{{ "%.4f"|format(metric.value) if metric.value is not none else "—" }} {{ metric.unit or "" }}</td></tr>{% else %}<tr><td colspan="7">No metrics recorded.</td></tr>{% endfor %}
+<details class="config-details"><summary>评测配置</summary><pre>{{ config|tojson(indent=2) }}</pre></details></section>
+<section class="detail-section"><h2>指标</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>任务</th><th>领域</th><th>维度</th><th>层级</th><th>指标</th><th>统计范围</th><th>数值</th></tr></thead><tbody>
+{% for metric in run.metrics %}<tr><td>{{ metric.task|task_label }}</td><td>{{ metric.domain }}</td><td>{{ metric.dimension|dimension_label }}</td><td>{{ metric.layer|layer_label }}</td><td>{{ metric.metric_name|metric_label }}</td><td>{{ metric.scope|scope_label }}</td><td>{{ "%.4f"|format(metric.value) if metric.value is not none else "—" }} {{ metric.unit|unit_label }}</td></tr>{% else %}<tr><td colspan="7">暂未记录指标。</td></tr>{% endfor %}
 </tbody></table></div></section>
-<section class="detail-section"><h2>Stages and events</h2><div class="stage-list">{% for stage in run.stages %}<div class="stage-row"><strong>{{ stage.stage }}</strong><span>{{ stage.status }}</span><code>{{ stage.updated_at }}</code></div>{% else %}<p class="muted">No stage events recorded.</p>{% endfor %}</div>
-<ol class="event-list">{% for event in run.events %}<li><time>{{ event.created_at }}</time><strong>{{ event.event_type }}</strong><pre>{{ event.payload_json }}</pre></li>{% endfor %}</ol></section>
-<section class="detail-section" id="report"><h2>Evaluation reports</h2>
-{% for report in reports %}<article class="item-report"><div class="section-heading"><h3>{% if report.item %}{{ report.item.task|upper }} / {{ report.item.domain }}{% else %}Run report{% endif %}</h3><a class="button small" href="{{ report.artifact.download_url }}">Download Markdown</a></div>
-<nav class="report-nav" aria-label="Report sections">{% for section in report.sections %}<a href="#{{ section.id }}">{{ section.label }}</a>{% endfor %}</nav>
-<div class="markdown-report">{{ report.html|safe }}</div></article>{% else %}<p class="muted">No Markdown report is available for this run.</p>{% endfor %}</section>
-<section class="detail-section"><h2>Artifacts</h2><ul class="artifact-list">{% for artifact in run.artifacts %}<li><div><strong>{{ artifact.name }}</strong><span>{{ artifact.context_label }} · {{ artifact.size_bytes }} bytes</span></div><a class="button small" href="{{ artifact.download_url }}">Download</a></li>{% else %}<li>No artifacts recorded.</li>{% endfor %}</ul></section>
+<section class="detail-section"><h2>阶段与日志</h2><div class="stage-list">{% for stage in run.stages %}<div class="stage-row"><strong>{{ stage.stage|stage_label }}</strong><span>{{ stage.status|status_label }}</span><code>{{ stage.updated_at }}</code></div>{% else %}<p class="muted">暂未记录阶段日志。</p>{% endfor %}</div>
+<ol class="event-list">{% for event in run.events %}<li><time>{{ event.created_at }}</time><strong>{{ event.event_type|event_label }}</strong><pre>{{ event.payload_json }}</pre></li>{% endfor %}</ol></section>
+<section class="detail-section" id="report"><h2>评测报告</h2>
+{% for report in reports %}<article class="item-report"><div class="section-heading"><h3>{% if report.item %}{{ report.item.task|upper }} / {{ report.item.domain }}{% else %}运行报告{% endif %}</h3><a class="button small" href="{{ report.artifact.download_url }}">下载 Markdown</a></div>
+<nav class="report-nav" aria-label="报告章节">{% for section in report.sections %}<a href="#{{ section.id }}">{{ section.label }}</a>{% endfor %}</nav>
+<div class="markdown-report">{{ report.html|safe }}</div></article>{% else %}<p class="muted">本次运行没有 Markdown 报告。</p>{% endfor %}</section>
+<section class="detail-section"><h2>产物文件</h2><ul class="artifact-list">{% for artifact in run.artifacts %}<li><div><strong>{{ artifact.name }}</strong><span>{{ artifact.context_label }} · {{ artifact.size_bytes }} 字节</span></div><a class="button small" href="{{ artifact.download_url }}">下载</a></li>{% else %}<li>暂未记录产物文件。</li>{% endfor %}</ul></section>
 {% endblock %}

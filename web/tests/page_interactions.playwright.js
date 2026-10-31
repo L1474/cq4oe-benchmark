@@ -6,6 +6,7 @@ async (page) => {
   const draftReleases = [];
   let delayDraft = false;
   let confirmFails = false;
+  const uploadAttempts = new Map();
 
   await page.route("**/api/agents", (route) => route.fulfill({ json: [
     { id: "agent-a", name: "Agent A" }, { id: "agent-b", name: "Agent B" },
@@ -36,7 +37,12 @@ async (page) => {
     if (confirmFails) route.fulfill({ status: 400, json: { detail: "Server rejected confirmation" } });
     else route.fulfill({ json: { confirmed: true } });
   });
-  await page.route("**/api/runs/*/items/*/upload", (route) => route.fulfill({ status: 400, json: { detail: "Keep draft for retry" } }));
+  await page.route("**/api/runs/*/items/*/upload", (route) => {
+    const itemId = route.request().url().split("/").at(-2);
+    uploadAttempts.set(itemId, (uploadAttempts.get(itemId) || 0) + 1);
+    route.fulfill(itemId === "item-0" ? { status: 201, json: { uploaded: true } }
+      : { status: 400, json: { detail: "Keep draft for retry" } });
+  });
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("http://127.0.0.1:8766/runs/new");
@@ -158,12 +164,25 @@ async (page) => {
   await page.click("#open-checklist");
   await page.locator("#drawer-content input[type=checkbox]").evaluateAll((nodes) => nodes.forEach((node) => { node.checked = true; node.dispatchEvent(new Event("change", { bubbles: true })); }));
   await page.click("#save-confirmation");
+  await page.click("#close-confirmation");
+  await page.click("#prepare-run");
+  await page.waitForTimeout(100);
+  check(await page.locator("#confirmation-modal").isVisible(), "re-Prepare should reopen saved confirmation after modal close");
+  check(await page.locator("#accept-confirmation").isEnabled(), "saved confirmation should remain ready to accept");
+  await page.click("#accept-confirmation");
+  await page.waitForSelector("#confirmation-modal:not([hidden])");
+  check((await page.locator("#confirmation-title").textContent()).includes("swo"), "retry should also present final saved confirmation");
   await page.click("#accept-confirmation");
   await page.waitForSelector("#run-error:not([hidden])");
   check(await page.locator("#confirmation-modal").isHidden(), "completed confirmations should close modal");
+  check(uploadAttempts.get("item-0") === 1 && uploadAttempts.get("item-1") === 1, "first upload pass should reach both items");
+  await page.locator("[data-item-key='cq2onto:water'] input[type=file]").setInputFiles({ name: "water-replacement.owl", mimeType: "application/rdf+xml", buffer: Buffer.from("<rdf:RDF replacement='true'/>") });
   await page.click("#prepare-run");
-  await page.waitForTimeout(100);
-  check(await page.locator("#confirmation-modal").isHidden(), "upload retry should not reopen confirmed checklists");
+  await page.waitForSelector("#confirmation-modal:not([hidden])");
+  await page.click("#accept-confirmation");
+  await page.click("#accept-confirmation");
+  await page.waitForSelector("#run-error:not([hidden])");
+  check(uploadAttempts.get("item-0") === 2, "replacement file should upload again on retry");
   check(draftRequests === 1, "upload retry should reuse original draft");
 
   if (failures.length) throw Error(failures.join("\n"));

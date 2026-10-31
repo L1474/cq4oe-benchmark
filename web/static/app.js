@@ -255,7 +255,7 @@
     const selectedItems = new Map();
     const files = new Map();
     const uploaded = new Set();
-    const confirmedItems = new Set();
+    const confirmedItems = new Map();
     const details = new Map();
     let activeRun = null;
     let runItems = new Map();
@@ -342,6 +342,7 @@
         upload.addEventListener("change", () => {
           if (upload.files[0]) files.set(key, upload.files[0]);
           else files.delete(key);
+          uploaded.delete(key);
           const oldError = $(".upload-error", row);
           if (oldError) oldError.remove();
         });
@@ -584,7 +585,7 @@
           body: JSON.stringify({ confirmed_ids: [...activeConfirmation.confirmedIds] }),
         });
         activeConfirmation.saved = true;
-        confirmedItems.add(itemKey(item));
+        confirmedItems.set(itemKey(item), new Set(activeConfirmation.confirmedIds));
         updateConfirmationProgress();
         closeDrawer();
         showModal();
@@ -596,7 +597,7 @@
     });
 
     async function beginConfirmations() {
-      ontoQueue = [...runItems.entries()].filter(([key]) => key.startsWith("cq2onto:") && !confirmedItems.has(key));
+      ontoQueue = [...runItems.entries()].filter(([key]) => key.startsWith("cq2onto:"));
       ontoIndex = 0;
       if (!ontoQueue.length) return uploadAndStart();
       presentConfirmation();
@@ -613,7 +614,8 @@
       const [task, domain] = key.split(":");
       const item = { task, domain };
       const detail = details.get(key);
-      activeConfirmation = { item, runItem, confirmedIds: new Set(), saved: false };
+      activeConfirmation = { item, runItem, confirmedIds: new Set(confirmedItems.get(key) || []),
+        saved: confirmedItems.has(key) };
       $("#confirmation-title").textContent = `Confirm ${domain.replaceAll("_", " ")} CQs provided`;
       updateConfirmationProgress();
       showModal();
@@ -719,6 +721,34 @@
   setupDomainDrawer();
   setupAgents();
   setupRunForm();
+
+  function setupRunDetail() {
+    const summary = $(".detail-summary[data-run-id]");
+    if (!summary || !["queued", "running"].includes(summary.dataset.runStatus)) return;
+    const path = window.location.pathname;
+    const refresh = async () => {
+      if (window.location.pathname !== path) return;
+      try {
+        const response = await fetch(path, { headers: { Accept: "text/html" } });
+        if (!response.ok) throw new Error(`Run detail refresh failed (${response.status})`);
+        const next = new DOMParser().parseFromString(await response.text(), "text/html");
+        const nextSummary = next.querySelector(".detail-summary[data-run-id]");
+        const currentSummary = $(".detail-summary[data-run-id]");
+        const nextSections = [...next.querySelectorAll("main.page-content > .detail-section")];
+        const currentSections = $$("main.page-content > .detail-section");
+        if (!nextSummary || nextSummary.dataset.runId !== summary.dataset.runId ||
+            nextSections.length !== currentSections.length) throw new Error("Run detail response is incomplete");
+        currentSummary.replaceWith(nextSummary);
+        currentSections.forEach((section, index) => section.replaceWith(nextSections[index]));
+        if (["queued", "running"].includes(nextSummary.dataset.runStatus)) setTimeout(refresh, 1000);
+      } catch (error) {
+        if (window.location.pathname === path) setTimeout(refresh, 1000);
+      }
+    };
+    setTimeout(refresh, 1000);
+  }
+
+  setupRunDetail();
 
   async function setupRecords() {
     const body = $("#records-body");

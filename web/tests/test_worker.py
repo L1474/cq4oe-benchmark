@@ -1,10 +1,12 @@
 import threading
 import time
+import json
+import sys
 from pathlib import Path
 
 from web.db import connect_database, initialize_database
 from web.repositories import create_agent, create_model, create_run, get_run
-from web.services.worker import EvaluationWorker
+from web.services.worker import EvaluationWorker, LocalEvaluator
 
 
 class Ready:
@@ -175,3 +177,98 @@ def test_worker_shutdown_interrupts_active_stage_and_records_partial_log(tmp_pat
     finally:
         stop.set()
         thread.join(3)
+
+
+def test_cq2term_stage_runs_relative_script_from_task_root(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    scripts = root / "CQ2Term/scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "eval_cq_terms.py").write_text("from pathlib import Path\nprint(Path.cwd())\n", encoding="utf-8")
+    db, runs = setup(tmp_path / "work")
+    run = get_run(db, user_id="local", run_id=next(iter(
+        row["id"] for row in _runs(db))))
+    item = run["items"][0]
+    monkeypatch.setattr("web.services.worker.build_cq2term_command",
+                        lambda *args: [sys.executable, "scripts/eval_cq_terms.py"])
+
+    LocalEvaluator(root).evaluate_item(run, item, lambda event: None)
+
+    log = Path(run["run_path"]) / "items" / item["id"] / "logs/evaluate.stdout.log"
+    assert log.read_text(encoding="utf-8").strip() == str((root / "CQ2Term").resolve())
+
+
+def _runs(db):
+    with connect_database(db) as conn:
+        return [dict(row) for row in conn.execute("SELECT id FROM runs ORDER BY created_at,id")]
+
+
+def test_stage_failure_persists_failed_and_blocked_stages_with_partial_outputs(tmp_path, monkeypatch):
+    from web.types import EvaluationStage
+    from web.services.evaluator import EvaluationStageError
+
+    db = tmp_path / "failure.sqlite3"
+    initialize_database(db)
+    agent = create_agent(db, user_id="local", name="A")
+    model = create_model(db, user_id="local", agent_id=agent["id"], name="M", provider="ollama", model_id="m")
+    run = create_run(db, user_id="local", agent_id=agent["id"], model_id=model["id"],
+                     items=[{"task": "cq2onto", "domain": "alpha"}], config={}, runs_root=tmp_path / "runs")
+    item = run["items"][0]
+    source = Path(run["run_path"]) / "items" / item["id"] / "input/p.owl"
+    source.write_text("ontology", encoding="utf-8")
+    with connect_database(db) as conn:
+        conn.execute("UPDATE run_items SET input_path=? WHERE id=?", (str(source), item["id"]))
+    stages = [EvaluationStage(name, [sys.executable], tmp_path) for name in ("class", "property", "triple")]
+    monkeypatch.setattr("web.services.worker.build_cq2onto_commands", lambda *args, **kwargs: stages)
+
+    def failing_stage(stage, stdout, stderr, sink, **kwargs):
+        stdout.write_text("partial output", encoding="utf-8")
+        raise EvaluationStageError(stage.name, 7, stdout, stderr)
+
+    monkeypatch.setattr("web.services.worker.run_stage", failing_stage)
+    assert EvaluationWorker(db, tmp_path / "runs", Ready(), LocalEvaluator(tmp_path)).process_one()
+
+    saved = get_run(db, user_id="local", run_id=run["id"])
+    assert saved["status"] == "failed" and saved["items"][0]["status"] == "failed"
+    assert [(stage["stage"], stage["status"]) for stage in saved["stages"]] == [
+        ("class", "failed"), ("property", "blocked"), ("triple", "blocked")]
+    assert json.loads(saved["stages"][1]["state_json"])["reason"] == "class failed"
+    assert any(artifact["name"] == "class.stdout.log" for artifact in saved["artifacts"])
+
+
+def test_extracted_metric_counts_survive_worker_and_api(tmp_path):
+    from fastapi.testclient import TestClient
+    from web.app import create_app
+    from web.config import Settings
+    from web.services.metrics import extract_cq2term_metrics
+
+    class IdleWorker:
+        def run_forever(self, stop):
+            stop.wait()
+
+    settings = Settings(tmp_path / "project", tmp_path / "data")
+    with TestClient(create_app(settings, lambda *_: IdleWorker())) as client:
+        db = settings.database_path
+        agent = create_agent(db, user_id="local", name="A")
+        model = create_model(db, user_id="local", agent_id=agent["id"], name="M", provider="ollama", model_id="m")
+        run = create_run(db, user_id="local", agent_id=agent["id"], model_id=model["id"],
+                         items=[{"task": "cq2term", "domain": "alpha"}], config={}, runs_root=settings.runs_root)
+        item = run["items"][0]
+
+        class ExtractingEvaluator:
+            def evaluate_item(self, run, item, event_sink):
+                result = Path(run["run_path"]) / "items" / item["id"] / "results/06_cq_terms/result.json"
+                result.parent.mkdir(parents=True, exist_ok=True)
+                result.write_text(json.dumps({"results": {"metrics_overall": {"combined": {
+                    "tp": 2, "fp": 1, "fn": 3, "precision": 2 / 3, "recall": 0.4, "f1": 0.5}},
+                    "per_cq_coverage": [{"cq_id": "CQ1", "coverage": 0.5,
+                                          "n_gold_classes": 2, "n_covered_classes": 1}]}}), encoding="utf-8")
+                return {"metrics": [record.__dict__ for record in extract_cq2term_metrics(result, result.with_name("coverage.csv"))]}
+
+        assert EvaluationWorker(db, settings.runs_root, Ready(), ExtractingEvaluator()).process_one()
+        response = client.get(f"/api/runs/{run['id']}")
+        assert response.status_code == 200
+        metrics = response.json()["metrics"]
+        f1 = next(record for record in metrics if record["metric_name"] == "f1")
+        coverage = next(record for record in metrics if record["metric_name"] == "coverage")
+        assert (f1["tp"], f1["fp"], f1["fn"]) == (2, 1, 3)
+        assert (coverage["numerator"], coverage["denominator"]) == (1, 2)

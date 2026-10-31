@@ -5,7 +5,7 @@
   <div><p class="eyebrow"><a href="/records">Run Records</a> / {{ run.id[:8] }}</p><h1>Run details</h1></div>
   <a class="button" href="/compare?run_ids={{ run.id }}">Compare</a>
 </header>
-<section class="detail-summary">
+<section class="detail-summary" data-run-id="{{ run.id }}" data-run-status="{{ run.status }}">
   <dl><div><dt>Run ID</dt><dd><code>{{ run.id }}</code></dd></div><div><dt>State</dt><dd><span class="state-pill state-{{ run.status }}">{{ run.status|title }}</span></dd></div>
   <div><dt>Agent</dt><dd>{{ agent.name }}</dd></div><div><dt>Model</dt><dd>{{ model.name }} <span class="muted">{{ model.model_id }}</span></dd></div>
   <div><dt>Created</dt><dd>{{ run.created_at }}</dd></div><div><dt>Evaluator</dt><dd><code>{{ run.evaluator_version }}</code></dd></div><div><dt>Gold fingerprint</dt><dd><code>{{ run.gold_fingerprint }}</code></dd></div></dl>

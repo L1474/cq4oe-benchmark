@@ -98,7 +98,8 @@ def _counts_as_prf(block: dict, *, mismatch_as_both: bool = False) -> dict:
     pden, rden = tp + fp, tp + fn
     precision = tp / pden if pden else None
     recall = tp / rden if rden else None
-    f1 = 2 * precision * recall / (precision + recall) if precision is not None and recall is not None and precision + recall else None
+    f1 = (2 * precision * recall / (precision + recall) if precision + recall else 0.0
+          ) if precision is not None and recall is not None else None
     return {**block, "tp": tp, "fp": fp, "fn": fn,
             "precision": precision, "recall": recall, "f1": f1}
 

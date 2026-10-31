@@ -225,8 +225,10 @@ def save_metrics(db_path: Path, *, user_id: str, run_id: str, metrics: list[dict
                    "layer": metric["layer"], "metric_name": metric["metric_name"], "scope": metric["scope"],
                    "value": metric.get("value"), "count": metric.get("count"), "unit": metric.get("unit"),
                    "scope_json": json.dumps(metric["scope_json"], sort_keys=True) if metric.get("scope_json") is not None else None,
-                   "created_at": _now()}
-            connection.execute("INSERT INTO metrics VALUES (:id, :user_id, :run_id, :run_item_id, :dimension, :layer, :metric_name, :scope, :value, :count, :unit, :scope_json, :created_at)", row)
+                   "created_at": _now(), "tp": metric.get("tp"), "fp": metric.get("fp"), "fn": metric.get("fn"),
+                   "numerator": metric.get("numerator"), "denominator": metric.get("denominator")}
+            connection.execute("INSERT INTO metrics (id,user_id,run_id,run_item_id,dimension,layer,metric_name,scope,value,count,unit,scope_json,created_at,tp,fp,fn,numerator,denominator) "
+                               "VALUES (:id,:user_id,:run_id,:run_item_id,:dimension,:layer,:metric_name,:scope,:value,:count,:unit,:scope_json,:created_at,:tp,:fp,:fn,:numerator,:denominator)", row)
             created.append(row)
     return created
 

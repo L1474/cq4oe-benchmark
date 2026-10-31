@@ -27,10 +27,11 @@ class LocalEvaluator:
         paths.ensure()
         domain_item = RunItem(item["id"], item["task"], item["domain"], Path(item["input_path"]))
         config = json.loads(run["config_json"])
-        stages = ([EvaluationStage("evaluate", build_cq2term_command(self.project_root, domain_item, paths, config), self.project_root)]
+        stages = ([EvaluationStage("evaluate", build_cq2term_command(self.project_root, domain_item, paths, config),
+                                   (self.project_root / "CQ2Term").resolve())]
                   if item["task"] == "cq2term" else build_cq2onto_commands(self.project_root, domain_item, paths, config,
                                                                             ollama_url=self.ollama_url))
-        for stage in stages:
+        for index, stage in enumerate(stages):
             event_sink({"stage": stage.name, "status": "started"})
             try:
                 run_stage(stage, paths.logs / f"{stage.name}.stdout.log", paths.logs / f"{stage.name}.stderr.log",
@@ -38,6 +39,11 @@ class LocalEvaluator:
                           stop_event=self.stop_event, env={"OLLAMA_HOST": self.ollama_url})
             except EvaluationCancelled:
                 event_sink({"stage": stage.name, "status": "interrupted"})
+                raise
+            except Exception as exc:
+                event_sink({"stage": stage.name, "status": "failed", "error": str(exc)})
+                for later in stages[index + 1:]:
+                    event_sink({"stage": later.name, "status": "blocked", "reason": f"{stage.name} failed"})
                 raise
             event_sink({"stage": stage.name, "status": "completed"})
         if item["task"] == "cq2term":

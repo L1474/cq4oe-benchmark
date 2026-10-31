@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def connect_database(db_path: Path) -> sqlite3.Connection:
@@ -108,6 +108,11 @@ CREATE TABLE metrics (
     unit TEXT,
     scope_json TEXT,
     created_at TEXT NOT NULL,
+    tp INTEGER,
+    fp INTEGER,
+    fn INTEGER,
+    numerator REAL,
+    denominator REAL,
     UNIQUE(run_item_id, dimension, layer, metric_name, scope),
     FOREIGN KEY(user_id, run_id) REFERENCES runs(user_id, id),
     FOREIGN KEY(user_id, run_item_id) REFERENCES run_items(user_id, id),
@@ -201,6 +206,17 @@ PRAGMA user_version = 6;
 COMMIT;
 """
 
+_MIGRATE_6_TO_7 = """
+BEGIN;
+ALTER TABLE metrics ADD COLUMN tp INTEGER;
+ALTER TABLE metrics ADD COLUMN fp INTEGER;
+ALTER TABLE metrics ADD COLUMN fn INTEGER;
+ALTER TABLE metrics ADD COLUMN numerator REAL;
+ALTER TABLE metrics ADD COLUMN denominator REAL;
+PRAGMA user_version = 7;
+COMMIT;
+"""
+
 
 def _migrate_4_to_5(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA foreign_keys = OFF")
@@ -267,8 +283,8 @@ def initialize_database(db_path: Path) -> None:
         if version > SCHEMA_VERSION:
             raise RuntimeError(f"database version {version} is newer than supported {SCHEMA_VERSION}")
         if version == 0:
-            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 6;\nCOMMIT;")
-            version = 6
+            connection.executescript("BEGIN;\n" + _SCHEMA + "\nPRAGMA user_version = 7;\nCOMMIT;")
+            version = 7
         if version == 1:
             connection.executescript(_MIGRATE_1_TO_2)
             version = 2
@@ -283,6 +299,9 @@ def initialize_database(db_path: Path) -> None:
             version = 5
         if version == 5:
             connection.executescript(_MIGRATE_5_TO_6)
+            version = 6
+        if version == 6:
+            connection.executescript(_MIGRATE_6_TO_7)
         connection.execute(
             "INSERT OR IGNORE INTO users (id, name, created_at) VALUES (?, ?, ?)",
             ("local", "Local User", "1970-01-01T00:00:00+00:00"),

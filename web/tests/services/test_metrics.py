@@ -80,3 +80,20 @@ def test_cq2onto_keeps_scopes_distinct_and_null_empty_metrics(tmp_path):
     assert hierarchy_coverage.scope == "closure"
     assert any(m.dimension == "hierarchy" and m.metric_name == "average_cq_coverage" and m.value == 0.25
                for m in records)
+
+
+@pytest.mark.parametrize("counts, expected", [
+    ({"tp": 0, "fp": 2, "fn": 3}, 0.0),
+    ({"tp": 0, "fp": 0, "fn": 0}, None),
+])
+def test_axiom_count_f1_distinguishes_zero_from_undefined(tmp_path, counts, expected):
+    paths = RunPaths(tmp_path)
+    paths.ensure()
+    result = paths.results / "04_axiom/eval_axioms_result.json"
+    result.parent.mkdir(parents=True)
+    result.write_text(json.dumps({"results": {"layer2": {"overall": counts}}}), encoding="utf-8")
+
+    records = extract_cq2onto_metrics(paths)
+
+    f1 = next(record for record in records if record.dimension == "axiom" and record.metric_name == "f1")
+    assert f1.value == expected

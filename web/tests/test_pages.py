@@ -26,6 +26,9 @@ def make_page_client(tmp_path):
 def test_page_routes_render_and_domain_list_keeps_questions_in_detail(tmp_path):
     client = make_page_client(tmp_path)
     with client:
+        home = client.get("/", follow_redirects=False)
+        assert home.status_code == 307
+        assert home.headers["location"] == "/runs/new"
         for path in ("/agents", "/runs/new", "/domains", "/domains/alpha"):
             response = client.get(path)
             assert response.status_code == 200, path

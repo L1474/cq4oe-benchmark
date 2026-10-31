@@ -7,7 +7,7 @@ import markdown
 from markdown.extensions.toc import slugify
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from web.db import connect_database
@@ -17,6 +17,11 @@ from web.i18n import (dimension_label, event_label, layer_label, metric_label,
                       scope_label, stage_label, status_label, task_label, unit_label)
 
 pages_router = APIRouter()
+
+
+@pages_router.get("/", include_in_schema=False)
+def home_page():
+    return RedirectResponse("/runs/new", status_code=307)
 
 
 class _ReportHeadings(HTMLParser):

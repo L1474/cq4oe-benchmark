@@ -60,9 +60,20 @@ def test_catalog_bundle_and_agent_model_routes(tmp_path):
         with zipfile.ZipFile(BytesIO(bundle.content)) as archive:
             assert "manifest.json" in archive.namelist()
         agent = client.post("/api/agents", json={"name": "Agent"}).json()
-        model = client.post(f"/api/agents/{agent['id']}/models", json={"name": "Local", "model_id": "qwen"})
+        model = client.post(f"/api/agents/{agent['id']}/models", json={
+            "name": "Local", "model_id": "qwen", "provider": "openai_compatible",
+            "config": {"base_url": "https://example.com/v1", "api_key": "secret", "temperature": 0.2},
+        })
         assert model.status_code == 201
-        assert client.get(f"/api/agents/{agent['id']}/models").json()[0]["model_id"] == "qwen"
+        listed = client.get(f"/api/agents/{agent['id']}/models").json()[0]
+        assert listed["model_id"] == "qwen"
+        assert listed["config"]["base_url"] == "https://example.com/v1"
+        assert listed["config"]["api_key"] == ""
+        assert listed["config"]["api_key_set"] is True
+        patched = client.patch(f"/api/models/{model.json()['id']}", json={"config": {"temperature": 0.4}})
+        assert patched.status_code == 200
+        assert patched.json()["config"]["temperature"] == 0.4
+        assert patched.json()["config"]["api_key_set"] is True
         other = client.post("/api/agents", json={"name": "Other"}).json()
         other_model = client.post(f"/api/agents/{other['id']}/models", json={"name": "Other model", "model_id": "other"}).json()
         assert [row["id"] for row in client.get(f"/api/agents/{agent['id']}/models").json()] == [model.json()["id"]]

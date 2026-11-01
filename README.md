@@ -44,6 +44,32 @@ docker compose logs -f app ollama
 5. 点击“准备运行”。评测台会为本次 run 建立独立目录，保存输入快照、阶段日志、`report.md`、指标和评测脚本生成的 JSON/CSV/TXT/XLSX/Atomic TBox 等产物。
 6. 在 **运行记录** 中筛选 Agent、模型、任务、领域、状态和日期。列表默认显示与上一条可比记录的指标趋势，可关闭趋势；选择 2～4 条记录后可以进入对比页查看共同条目和指标变化。
 
+### 模型配置表单和 API
+
+Agent 管理页面使用完整表单配置模型，不需要连续填写浏览器弹窗。表单支持模型名称、提供方、模型 ID、接口地址、API Key、temperature、最大 tokens 和高级 JSON 配置。API Key 只在提交时写入，查询接口只返回是否已设置。
+
+也可以通过 HTTP 或 Python 管理模型：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/agents/<agent_id>/models \
+  -H "Content-Type: application/json" \
+  -d '{"name":"云端模型","provider":"openai_compatible","model_id":"qwen-plus","config":{"base_url":"https://example.com/v1","api_key":"your-key","temperature":0.2}}'
+```
+
+对应的 Python 调用：
+
+```python
+import requests
+
+requests.post(
+    "http://127.0.0.1:8000/api/agents/<agent_id>/models",
+    json={"name": "本地模型", "provider": "ollama", "model_id": "qwen3:8b",
+          "config": {"base_url": "http://127.0.0.1:11434"}},
+).raise_for_status()
+```
+
+编辑模型使用 `PATCH /api/models/<model_id>`，查询使用 `GET /api/agents/<agent_id>/models`。
+
 ### 数据保存与备份
 
 主机 `./data` 挂载到容器的 `/app/data`，包含 `evaluator.sqlite3` 和 `runs/<run-id>/` 下的输入、日志、工作文件、报告与结果。停止并重启不会丢失数据：

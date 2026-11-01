@@ -71,10 +71,28 @@ def _state(request):
     return request.app.state
 
 
-def _json_config(row):
+def _json_config(row, *, redact_secrets: bool = False):
     row = dict(row)
-    row["config"] = json.loads(row.pop("config_json", "{}"))
+    config = json.loads(row.pop("config_json", "{}"))
+    if redact_secrets and isinstance(config, dict) and "api_key" in config:
+        config = dict(config)
+        config["api_key_set"] = bool(config.get("api_key"))
+        config["api_key"] = ""
+    row["config"] = config
     return row
+
+
+def _merged_model_config(connection, model_id: str, incoming: dict) -> dict:
+    current = connection.execute(
+        "SELECT config_json FROM models WHERE id=? AND user_id='local'", (model_id,)
+    ).fetchone()
+    existing = json.loads(current["config_json"] or "{}") if current else {}
+    merged = dict(existing) if isinstance(existing, dict) else {}
+    merged.update(incoming or {})
+    # An empty key from the edit form means "keep the existing key".
+    if not (incoming or {}).get("api_key") and existing.get("api_key"):
+        merged["api_key"] = existing["api_key"]
+    return merged
 
 
 def _dump(model):
@@ -182,8 +200,8 @@ def models(request: Request, agent_id: str):
     with connect_database(_state(request).settings.database_path) as conn:
         if not conn.execute("SELECT 1 FROM agents WHERE id=? AND user_id='local'", (agent_id,)).fetchone():
             raise HTTPException(404, "Agent not found")
-    return [_json_config(row) for row in list_models(_state(request).settings.database_path,
-                                                     user_id="local", agent_id=agent_id)]
+    return [_json_config(row, redact_secrets=True) for row in list_models(_state(request).settings.database_path,
+                                                                         user_id="local", agent_id=agent_id)]
 
 
 @api_router.post("/agents/{agent_id}/models", status_code=201)
@@ -192,14 +210,17 @@ def create_model_route(request: Request, agent_id: str, body: ModelInput):
         if not conn.execute("SELECT 1 FROM agents WHERE id=? AND user_id='local'", (agent_id,)).fetchone():
             raise HTTPException(404, "Agent not found")
     return _json_config(create_model(_state(request).settings.database_path, user_id="local",
-                                     agent_id=agent_id, **_dump(body)))
+                                     agent_id=agent_id, **_dump(body)), redact_secrets=True)
 
 
 @api_router.patch("/models/{model_id}")
 def update_model(request: Request, model_id: str, body: ModelPatch):
     values = _dump(body)
     if "config" in values:
-        values["config_json"] = json.dumps(values.pop("config"), sort_keys=True)
+        with connect_database(_state(request).settings.database_path) as conn:
+            values["config_json"] = json.dumps(
+                _merged_model_config(conn, model_id, values.pop("config")), sort_keys=True
+            )
     values = {key: value for key, value in values.items() if value is not None}
     if not values:
         raise HTTPException(400, "No model fields supplied")
@@ -209,7 +230,7 @@ def update_model(request: Request, model_id: str, body: ModelPatch):
                               (*values.values(), model_id))
         if cursor.rowcount != 1:
             raise HTTPException(404, "Model not found")
-        return _json_config(conn.execute("SELECT * FROM models WHERE id=?", (model_id,)).fetchone())
+        return _json_config(conn.execute("SELECT * FROM models WHERE id=?", (model_id,)).fetchone(), redact_secrets=True)
 
 
 @api_router.delete("/models/{model_id}", status_code=204)

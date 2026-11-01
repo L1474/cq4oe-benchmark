@@ -12,6 +12,42 @@
   <label>描述<input id="agent-description" name="description" maxlength="300"></label>
   <div class="form-actions"><button class="button" type="button" id="cancel-agent-secondary">取消</button><button class="button primary" type="submit">保存 Agent</button></div>
 </form>
+<form id="model-form" class="form-panel model-form" hidden>
+  <div class="form-heading"><h2 id="model-form-title">添加模型</h2><button class="icon-button" type="button" id="cancel-model" aria-label="关闭">×</button></div>
+  <input type="hidden" id="model-id">
+  <input type="hidden" id="model-agent-id">
+  <div class="model-form-grid">
+    <label>模型显示名称<input id="model-name" name="name" required maxlength="120" placeholder="例如：本地 Qwen 72B"></label>
+    <label>提供方<select id="model-provider" name="provider">
+      <option value="ollama">Ollama</option>
+      <option value="openai_compatible">OpenAI 兼容接口</option>
+      <option value="openai">OpenAI</option>
+      <option value="azure_openai">Azure OpenAI</option>
+      <option value="custom_http">自定义 HTTP</option>
+    </select></label>
+    <label>模型 ID<input id="model-model-id" name="model_id" required maxlength="200" placeholder="例如：qwen3:8b 或 gpt-4o"></label>
+    <label>接口地址（可选）<input id="model-base-url" name="base_url" type="url" maxlength="500" placeholder="例如：http://127.0.0.1:11434/v1"></label>
+    <label>API Key（可选）<input id="model-api-key" name="api_key" type="password" autocomplete="new-password" maxlength="500" placeholder="留空表示不修改已保存的 Key"></label>
+    <label>Temperature（可选）<input id="model-temperature" name="temperature" type="number" min="0" max="2" step="0.01" placeholder="例如：0.2"></label>
+    <label>最大 Tokens（可选）<input id="model-max-tokens" name="max_tokens" type="number" min="1" step="1" placeholder="例如：4096"></label>
+  </div>
+  <label>高级配置 JSON（可选）<textarea id="model-extra-config" name="extra" rows="5" spellcheck="false" placeholder='{"headers": {"X-Org": "demo"}}'></textarea></label>
+  <p class="form-help">这些配置会作为模型元数据保存，当前评测流程使用上传的预测产物，不会调用这里的模型接口。</p>
+  <div class="form-actions"><button class="button" type="button" id="cancel-model-secondary">取消</button><button class="button primary" type="submit">保存模型</button></div>
+</form>
 <div id="agent-error" class="notice error" role="alert" hidden></div>
 <div id="agents-list" class="agent-list" aria-live="polite"><p class="muted">正在加载 Agent…</p></div>
+<details class="api-help">
+  <summary>通过 HTTP / Python 管理模型</summary>
+  <p class="muted">页面表单和下面的 API 使用同一套数据。API Key 只在写入时提交，查询接口只返回是否已设置。</p>
+  <pre><code>curl -X POST http://127.0.0.1:8000/api/agents/&lt;agent_id&gt;/models \
+  -H "Content-Type: application/json" \
+  -d '{"name":"云端模型","provider":"openai_compatible","model_id":"qwen-plus","config":{"base_url":"https://example.com/v1","api_key":"your-key","temperature":0.2}}'</code></pre>
+  <pre><code>import requests
+requests.post(
+    "http://127.0.0.1:8000/api/agents/&lt;agent_id&gt;/models",
+    json={"name": "本地模型", "provider": "ollama", "model_id": "qwen3:8b",
+          "config": {"base_url": "http://127.0.0.1:11434"}},
+).raise_for_status()</code></pre>
+</details>
 {% endblock %}

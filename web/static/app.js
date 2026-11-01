@@ -178,11 +178,22 @@
   function setupAgents() {
     const list = $("#agents-list");
     const form = $("#agent-form");
-    if (!list || !form) return;
+    const modelForm = $("#model-form");
+    if (!list || !form || !modelForm) return;
     const error = $("#agent-error");
     const nameInput = $("#agent-name");
     const descriptionInput = $("#agent-description");
     const idInput = $("#agent-id");
+    const modelIdInput = $("#model-id");
+    const modelAgentIdInput = $("#model-agent-id");
+    const modelNameInput = $("#model-name");
+    const modelProviderInput = $("#model-provider");
+    const modelModelIdInput = $("#model-model-id");
+    const modelBaseUrlInput = $("#model-base-url");
+    const modelApiKeyInput = $("#model-api-key");
+    const modelTemperatureInput = $("#model-temperature");
+    const modelMaxTokensInput = $("#model-max-tokens");
+    const modelExtraConfigInput = $("#model-extra-config");
 
     const button = (label, className, action) => {
       const element = document.createElement("button");
@@ -194,6 +205,7 @@
     };
 
     const openForm = (agent = null) => {
+      modelForm.hidden = true;
       idInput.value = agent?.id || "";
       nameInput.value = agent?.name || "";
       descriptionInput.value = agent?.description || "";
@@ -202,9 +214,31 @@
       nameInput.focus();
     };
     const closeForm = () => { form.hidden = true; };
+    const closeModelForm = () => { modelForm.hidden = true; };
     $("#new-agent").addEventListener("click", () => openForm());
     $("#cancel-agent").addEventListener("click", closeForm);
     $("#cancel-agent-secondary").addEventListener("click", closeForm);
+    $("#cancel-model").addEventListener("click", closeModelForm);
+    $("#cancel-model-secondary").addEventListener("click", closeModelForm);
+
+    function openModelForm(agentId, existing = null) {
+      form.hidden = true;
+      const config = existing?.config || {};
+      modelIdInput.value = existing?.id || "";
+      modelAgentIdInput.value = agentId;
+      modelNameInput.value = existing?.name || "";
+      modelProviderInput.value = existing?.provider || "ollama";
+      modelModelIdInput.value = existing?.model_id || "";
+      modelBaseUrlInput.value = config.base_url || "";
+      modelApiKeyInput.value = "";
+      modelApiKeyInput.placeholder = config.api_key_set ? "已保存，留空表示不修改" : "留空表示不配置 API Key";
+      modelTemperatureInput.value = config.temperature ?? "";
+      modelMaxTokensInput.value = config.max_tokens ?? "";
+      modelExtraConfigInput.value = config.extra ? JSON.stringify(config.extra, null, 2) : "";
+      $("#model-form-title").textContent = existing ? "编辑模型" : "添加模型";
+      modelForm.hidden = false;
+      modelNameInput.focus();
+    }
 
     async function render() {
       list.replaceChildren();
@@ -246,7 +280,7 @@
           modelHeading.className = "model-heading";
           const modelTitle = document.createElement("h3");
           modelTitle.textContent = "模型";
-          modelHeading.append(modelTitle, button("＋ 添加模型", "text-button", () => addModel(agent.id)));
+          modelHeading.append(modelTitle, button("＋ 添加模型", "text-button", () => openModelForm(agent.id)));
           card.append(modelHeading);
           const modelList = document.createElement("div");
           try {
@@ -275,38 +309,65 @@
     function modelRow(agentId, model) {
       const row = document.createElement("div");
       row.className = "model-row";
-      [model.name, model.model_id, model.provider].forEach((value) => {
-        const cell = document.createElement("span");
-        cell.textContent = value;
-        row.append(cell);
-      });
+      const primary = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = model.name;
+      const secondary = document.createElement("span");
+      secondary.className = "model-secondary";
+      const providerLabels = { ollama: "Ollama", openai_compatible: "OpenAI 兼容", openai: "OpenAI", azure_openai: "Azure OpenAI", custom_http: "自定义 HTTP" };
+      secondary.textContent = `${providerLabels[model.provider] || model.provider} · ${model.model_id}`;
+      primary.append(name, secondary);
+      const configSummary = document.createElement("div");
+      configSummary.className = "model-config";
+      const config = model.config || {};
+      const details = [];
+      if (config.base_url) details.push(config.base_url);
+      if (config.api_key_set) details.push("API Key 已设置");
+      if (config.temperature !== undefined) details.push(`temperature=${config.temperature}`);
+      configSummary.textContent = details.join(" · ") || "未填写额外接口配置";
       const actions = document.createElement("div");
       actions.className = "model-row-actions";
-      actions.append(button("编辑", "button small", () => editModel(model)));
+      actions.append(button("编辑", "button small", () => openModelForm(agentId, model)));
       actions.append(button("移除", "button small", async () => {
         try { await request(`/api/models/${encodeURIComponent(model.id)}`, { method: "DELETE" }); await render(); }
         catch (err) { showNotice(error, err.message); }
       }));
-      row.append(actions);
+      row.append(primary, configSummary, actions);
       return row;
     }
 
-    async function addModel(agentId, existing = null) {
-      const modelName = window.prompt("模型名称", existing?.name || "");
-      if (modelName === null) return;
-      const modelId = window.prompt("模型 ID", existing?.model_id || "");
-      if (modelId === null) return;
-      const provider = window.prompt("提供方", existing?.provider || "ollama");
-      if (provider === null) return;
+    modelForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      hideNotice(error);
+      const extraText = modelExtraConfigInput.value.trim();
+      let extra = undefined;
+      if (extraText) {
+        try { extra = JSON.parse(extraText); }
+        catch (_) { showNotice(error, "高级配置必须是有效的 JSON。 "); return; }
+        if (!extra || Array.isArray(extra) || typeof extra !== "object") {
+          showNotice(error, "高级配置必须是 JSON 对象。 ");
+          return;
+        }
+      }
+      const config = {};
+      if (modelBaseUrlInput.value.trim()) config.base_url = modelBaseUrlInput.value.trim();
+      if (modelApiKeyInput.value.trim()) config.api_key = modelApiKeyInput.value.trim();
+      if (modelTemperatureInput.value !== "") config.temperature = Number(modelTemperatureInput.value);
+      if (modelMaxTokensInput.value !== "") config.max_tokens = Number(modelMaxTokensInput.value);
+      if (extra !== undefined) config.extra = extra;
+      const body = {
+        name: modelNameInput.value.trim(),
+        provider: modelProviderInput.value,
+        model_id: modelModelIdInput.value.trim(),
+        config,
+      };
       try {
-        const body = { name: modelName.trim(), model_id: modelId.trim(), provider: provider.trim() || "ollama" };
-        if (existing) await request(`/api/models/${encodeURIComponent(existing.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        else await request(`/api/agents/${encodeURIComponent(agentId)}/models`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (modelIdInput.value) await request(`/api/models/${encodeURIComponent(modelIdInput.value)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        else await request(`/api/agents/${encodeURIComponent(modelAgentIdInput.value)}/models`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        closeModelForm();
         await render();
       } catch (err) { showNotice(error, err.message); }
-    }
-
-    function editModel(model) { addModel(model.agent_id, model); }
+    });
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();

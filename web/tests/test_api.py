@@ -81,6 +81,20 @@ def test_catalog_bundle_and_agent_model_routes(tmp_path):
         assert client.patch(f"/api/agents/{agent['id']}", json={"name": "Renamed"}).status_code == 200
 
 
+def test_model_name_alone_creates_a_label_without_connection_settings(tmp_path):
+    client, _ = make_client(tmp_path)
+    with client:
+        agent = client.post("/api/agents", json={"name": "cqbycq"}).json()
+        response = client.post(f"/api/agents/{agent['id']}/models", json={"name": "deepseek-v4-pro"})
+        assert response.status_code == 201
+        model = response.json()
+        assert model["name"] == "deepseek-v4-pro"
+        assert model["model_id"] == "deepseek-v4-pro"
+        assert model["config"] == {}
+        assert client.patch(f"/api/models/{model['id']}", json={"name": "Qwen"}).status_code == 200
+        assert client.post(f"/api/agents/{agent['id']}/models", json={"name": "   "}).status_code == 422
+
+
 def test_run_upload_start_and_artifacts_are_index_restricted(tmp_path):
     client, app = make_client(tmp_path)
     with client:

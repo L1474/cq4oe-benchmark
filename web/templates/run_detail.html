@@ -7,7 +7,7 @@
 </header>
 <section class="detail-summary" data-run-id="{{ run.id }}" data-run-status="{{ run.status }}">
   <dl><div><dt>运行 ID</dt><dd><code>{{ run.id }}</code></dd></div><div><dt>状态</dt><dd><span class="state-pill state-{{ run.status }}">{{ run.status|status_label }}</span></dd></div>
-  <div><dt>Agent</dt><dd>{{ agent.name }}</dd></div><div><dt>模型</dt><dd>{{ model.name }} <span class="muted">{{ model.model_id }}</span></dd></div>
+  <div><dt>Agent</dt><dd>{{ agent.name }}</dd></div><div><dt>模型标签</dt><dd>{{ model.name }}</dd></div>
   <div><dt>创建时间</dt><dd>{{ run.created_at }}</dd></div><div><dt>评测器版本</dt><dd><code>{{ run.evaluator_version }}</code></dd></div><div><dt>金标准指纹</dt><dd><code>{{ run.gold_fingerprint }}</code></dd></div></dl>
 </section>
 <section class="detail-section"><h2>运行输入</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>任务</th><th>领域</th><th>条目状态</th><th>CQ 确认数</th><th>评测包版本</th></tr></thead><tbody>

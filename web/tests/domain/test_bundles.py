@@ -34,6 +34,7 @@ def test_cq2term_bundle_contains_source_manifest_readme_and_blank_template():
     }
     assert all(set(row) == {"id", "value", "class", "property"} for row in template)
     assert all(row["class"] == row["property"] == [] for row in template)
+    assert "填写 prediction_template.json" in files["README.txt"].decode("utf-8")
     assert corrupt_file is None
 
 
@@ -48,6 +49,13 @@ def test_bundles_omit_gold_paths_and_answers():
             assert "gold" not in name.lower()
             assert b"gold" not in payload.lower()
             assert b"answer" not in payload.lower()
+
+
+def test_cq2onto_bundle_explains_final_ontology_and_optional_logs():
+    _, files = _read_bundle("cq2onto", "wine")
+    instructions = files["README.txt"].decode("utf-8")
+    assert "最终生成一个合并的本体文件" in instructions
+    assert "生成日志不必上传" in instructions
 
 
 def test_bundle_bytes_are_deterministic():

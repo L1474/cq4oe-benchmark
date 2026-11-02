@@ -29,8 +29,8 @@ class AgentInput(BaseModel):
 
 class ModelInput(BaseModel):
     name: str
-    provider: str = "ollama"
-    model_id: str
+    provider: str = "label"
+    model_id: str | None = None
     config: dict = Field(default_factory=dict)
 
 
@@ -206,11 +206,17 @@ def models(request: Request, agent_id: str):
 
 @api_router.post("/agents/{agent_id}/models", status_code=201)
 def create_model_route(request: Request, agent_id: str, body: ModelInput):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "Model name is required")
     with connect_database(_state(request).settings.database_path) as conn:
         if not conn.execute("SELECT 1 FROM agents WHERE id=? AND user_id='local'", (agent_id,)).fetchone():
             raise HTTPException(404, "Agent not found")
+    values = _dump(body)
+    values["name"] = name
+    values["model_id"] = values["model_id"] or name
     return _json_config(create_model(_state(request).settings.database_path, user_id="local",
-                                     agent_id=agent_id, **_dump(body)), redact_secrets=True)
+                                     agent_id=agent_id, **values), redact_secrets=True)
 
 
 @api_router.patch("/models/{model_id}")

@@ -29,7 +29,7 @@ def test_page_routes_render_and_domain_list_keeps_questions_in_detail(tmp_path):
         home = client.get("/", follow_redirects=False)
         assert home.status_code == 307
         assert home.headers["location"] == "/runs/new"
-        for path in ("/agents", "/runs/new", "/domains", "/domains/alpha"):
+        for path in ("/agents", "/runs/new", "/guide", "/domains", "/domains/alpha"):
             response = client.get(path)
             assert response.status_code == 200, path
             assert "text/html" in response.headers["content-type"]
@@ -43,6 +43,7 @@ def test_run_form_uses_task_domain_controls_and_task_specific_counts(tmp_path):
     client = make_page_client(tmp_path)
     with client:
         page = client.get("/runs/new").text
+        assert page.count('aria-current="page"') == 1
         assert 'data-cq-count-for="cq2term"' in page
         assert 'data-cq-count-for="cq2onto"' in page
         assert 'id="run-task"' in page
@@ -52,6 +53,22 @@ def test_run_form_uses_task_domain_controls_and_task_specific_counts(tmp_path):
         assert 'class="domain-selection"' not in page
         assert 'id="accept-confirmation" disabled' in page
         assert 'id="open-checklist"' in page
+        assert "每个任务 / 领域上传一个文件" in page
+        assert 'href="/guide"' in page
+
+
+def test_model_form_uses_name_only_and_guide_explains_external_inputs(tmp_path):
+    client = make_page_client(tmp_path)
+    with client:
+        agents = client.get("/agents").text
+        assert 'id="model-name"' in agents
+        assert 'id="model-base-url"' not in agents
+        assert "API Key" not in agents
+        guide = client.get("/guide").text
+        assert "prediction_template.json" in guide
+        assert "ontology/" in guide
+        assert "log/" in guide
+        assert "normal" in guide and "cqbycq" in guide and "agent" in guide
 
 
 def test_domain_detail_exposes_task_cqs_and_task_bundle_links(tmp_path):

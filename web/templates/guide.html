@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}使用说明 · CQ4OE 评测台{% endblock %}
+{% block content %}
+<header class="page-heading"><div><p class="eyebrow">提交指南</p><h1>准备预测产物</h1></div><a class="button primary" href="/runs/new">新建运行</a></header>
+<div class="guide-intro">评测台只运行评分脚本。Agent 和模型在这里仅作为记录标签；生成预测产物时使用你自己的程序、服务或 Agent。</div>
+
+<section class="guide-section">
+  <div class="guide-number">01</div>
+  <div><h2>下载对应领域的 CQ 包</h2><p>到<a href="/domains">领域目录</a>选择任务和领域，下载 CQ 包。包内的 <code>cqs.json</code> 是要交给外部生成程序的问题；<code>manifest.json</code> 列出必须覆盖的 CQ ID 和包版本。CQ2Term 包还附带 <code>prediction_template.json</code>。</p></div>
+</section>
+
+<section class="guide-section">
+  <div class="guide-number">02</div>
+  <div><h2>在外部运行自己的生成方法</h2><p>把该领域的全部 CQ 提供给你的方法。生成程序的启动命令由你自己的实现决定；评测台不会调用你标注的生成模型接口，也不要求上传生成代码。评分中的词项对齐仍会使用本地 embedding 服务。</p>
+    <div class="guide-task-grid">
+      <div><h3>CQ2Term</h3><p>按每个 CQ 预测类和属性。填写下载包中的模板，保留每个 <code>id</code>，给 <code>class</code> 和 <code>property</code> 填入字符串数组。一个领域最终交一个 UTF-8 JSON 文件。</p>
+<pre><code>[
+  {"id": "CQ1", "value": "原 CQ 文本", "class": ["Animal"], "property": ["eats"]}
+]</code></pre></div>
+      <div><h3>CQ2Onto</h3><p>依据该领域全部 CQ，生成一个最终本体。可以一次生成（<code>normal</code>）、逐 CQ 生成后合并（<code>cqbycq</code>），或由多步骤 Agent 生成（<code>agent</code>）；这三个名称代表生成方法，不代表要上传三份文件。</p>
+<pre><code>cqbycq/你的模型/ontology/wine_ontology.owl  ← 上传这一个最终文件
+cqbycq/你的模型/log/wine_log.txt            ← 生成日志，可留在本地</code></pre></div>
+    </div>
+  </div>
+</section>
+
+<section class="guide-section">
+  <div class="guide-number">03</div>
+  <div><h2>按任务 / 领域逐项上传</h2><p>在<a href="/runs/new">运行页</a>选择 Agent 和模型标签，添加任务 / 领域。每添加一个条目，就上传该条目的一个预测文件；一次运行可以包含多个条目。</p>
+    <div class="table-wrap"><table class="data-table guide-table"><thead><tr><th>任务</th><th>上传文件</th><th>检查规则</th></tr></thead><tbody>
+      <tr><td>CQ2Term</td><td>一个 <code>.json</code></td><td>必须覆盖该领域全部 CQ ID，不得重复；每行都有字符串数组 <code>class</code> 和 <code>property</code>。</td></tr>
+      <tr><td>CQ2Onto</td><td>一个 <code>.owl/.rdf/.xml/.ttl/.nt/.n3</code></td><td><code>.owl/.rdf/.xml</code> 使用 RDF/XML；上传前确认该领域全部 CQ 已提供给 Agent。</td></tr>
+    </tbody></table></div>
+    <p>上传的是最终预测产物。CQ 包、外部生成日志、生成代码、金标准和 <code>report.md</code> 都不用上传；评测日志、指标和报告由评测台生成。单个上传文件上限为 50 MB。</p>
+  </div>
+</section>
+
+<section class="guide-section">
+  <div class="guide-number">04</div>
+  <div><h2>查看结果与对比</h2><p>提交后到<a href="/records">运行记录</a>查看状态。运行详情展示分层指标、阶段日志、<code>report.md</code> 和可下载的原始产物；记录页可以筛选并对比 2～4 次运行。</p></div>
+</section>
+{% endblock %}

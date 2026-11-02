@@ -80,6 +80,11 @@ def agents_page(request: Request):
     return _templates(request).TemplateResponse(request, "agents.html", {})
 
 
+@pages_router.get("/guide", response_class=HTMLResponse)
+def guide_page(request: Request):
+    return _templates(request).TemplateResponse(request, "guide.html", {})
+
+
 @pages_router.get("/runs/new", response_class=HTMLResponse)
 def new_run_page(request: Request):
     domains = list_domains(request.app.state.settings.project_root)

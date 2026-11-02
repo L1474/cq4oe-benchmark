@@ -187,13 +187,6 @@
     const modelIdInput = $("#model-id");
     const modelAgentIdInput = $("#model-agent-id");
     const modelNameInput = $("#model-name");
-    const modelProviderInput = $("#model-provider");
-    const modelModelIdInput = $("#model-model-id");
-    const modelBaseUrlInput = $("#model-base-url");
-    const modelApiKeyInput = $("#model-api-key");
-    const modelTemperatureInput = $("#model-temperature");
-    const modelMaxTokensInput = $("#model-max-tokens");
-    const modelExtraConfigInput = $("#model-extra-config");
 
     const button = (label, className, action) => {
       const element = document.createElement("button");
@@ -223,19 +216,10 @@
 
     function openModelForm(agentId, existing = null) {
       form.hidden = true;
-      const config = existing?.config || {};
       modelIdInput.value = existing?.id || "";
       modelAgentIdInput.value = agentId;
       modelNameInput.value = existing?.name || "";
-      modelProviderInput.value = existing?.provider || "ollama";
-      modelModelIdInput.value = existing?.model_id || "";
-      modelBaseUrlInput.value = config.base_url || "";
-      modelApiKeyInput.value = "";
-      modelApiKeyInput.placeholder = config.api_key_set ? "已保存，留空表示不修改" : "留空表示不配置 API Key";
-      modelTemperatureInput.value = config.temperature ?? "";
-      modelMaxTokensInput.value = config.max_tokens ?? "";
-      modelExtraConfigInput.value = config.extra ? JSON.stringify(config.extra, null, 2) : "";
-      $("#model-form-title").textContent = existing ? "编辑模型" : "添加模型";
+      $("#model-form-title").textContent = existing ? "编辑模型标签" : "添加模型标签";
       modelForm.hidden = false;
       modelNameInput.focus();
     }
@@ -280,7 +264,7 @@
           modelHeading.className = "model-heading";
           const modelTitle = document.createElement("h3");
           modelTitle.textContent = "模型";
-          modelHeading.append(modelTitle, button("＋ 添加模型", "text-button", () => openModelForm(agent.id)));
+          modelHeading.append(modelTitle, button("＋ 添加模型标签", "text-button", () => openModelForm(agent.id)));
           card.append(modelHeading);
           const modelList = document.createElement("div");
           try {
@@ -309,22 +293,8 @@
     function modelRow(agentId, model) {
       const row = document.createElement("div");
       row.className = "model-row";
-      const primary = document.createElement("div");
       const name = document.createElement("strong");
       name.textContent = model.name;
-      const secondary = document.createElement("span");
-      secondary.className = "model-secondary";
-      const providerLabels = { ollama: "Ollama", openai_compatible: "OpenAI 兼容", openai: "OpenAI", azure_openai: "Azure OpenAI", custom_http: "自定义 HTTP" };
-      secondary.textContent = `${providerLabels[model.provider] || model.provider} · ${model.model_id}`;
-      primary.append(name, secondary);
-      const configSummary = document.createElement("div");
-      configSummary.className = "model-config";
-      const config = model.config || {};
-      const details = [];
-      if (config.base_url) details.push(config.base_url);
-      if (config.api_key_set) details.push("API Key 已设置");
-      if (config.temperature !== undefined) details.push(`temperature=${config.temperature}`);
-      configSummary.textContent = details.join(" · ") || "未填写额外接口配置";
       const actions = document.createElement("div");
       actions.className = "model-row-actions";
       actions.append(button("编辑", "button small", () => openModelForm(agentId, model)));
@@ -332,35 +302,16 @@
         try { await request(`/api/models/${encodeURIComponent(model.id)}`, { method: "DELETE" }); await render(); }
         catch (err) { showNotice(error, err.message); }
       }));
-      row.append(primary, configSummary, actions);
+      row.append(name, actions);
       return row;
     }
 
     modelForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       hideNotice(error);
-      const extraText = modelExtraConfigInput.value.trim();
-      let extra = undefined;
-      if (extraText) {
-        try { extra = JSON.parse(extraText); }
-        catch (_) { showNotice(error, "高级配置必须是有效的 JSON。 "); return; }
-        if (!extra || Array.isArray(extra) || typeof extra !== "object") {
-          showNotice(error, "高级配置必须是 JSON 对象。 ");
-          return;
-        }
-      }
-      const config = {};
-      if (modelBaseUrlInput.value.trim()) config.base_url = modelBaseUrlInput.value.trim();
-      if (modelApiKeyInput.value.trim()) config.api_key = modelApiKeyInput.value.trim();
-      if (modelTemperatureInput.value !== "") config.temperature = Number(modelTemperatureInput.value);
-      if (modelMaxTokensInput.value !== "") config.max_tokens = Number(modelMaxTokensInput.value);
-      if (extra !== undefined) config.extra = extra;
-      const body = {
-        name: modelNameInput.value.trim(),
-        provider: modelProviderInput.value,
-        model_id: modelModelIdInput.value.trim(),
-        config,
-      };
+      const name = modelNameInput.value.trim();
+      if (!name) { showNotice(error, "请输入模型名称。 "); return; }
+      const body = { name };
       try {
         if (modelIdInput.value) await request(`/api/models/${encodeURIComponent(modelIdInput.value)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         else await request(`/api/agents/${encodeURIComponent(modelAgentIdInput.value)}/models`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -427,7 +378,7 @@
       try {
         const models = await request(`/api/agents/${encodeURIComponent(selectedAgent)}/models`);
         if (requestId !== modelRequest || agentSelect.value !== selectedAgent) return;
-        for (const model of models) modelSelect.add(new Option(`${model.name} (${model.model_id})`, model.id));
+        for (const model of models) modelSelect.add(new Option(model.name, model.id));
         modelSelect.disabled = false;
       } catch (err) {
         if (requestId === modelRequest && agentSelect.value === selectedAgent) showNotice(errorNode, err.message);
@@ -494,6 +445,12 @@
           upload.files = transfer.files;
         }
         uploadLabel.append(upload);
+        const uploadHint = document.createElement("span");
+        uploadHint.className = "upload-hint";
+        uploadHint.textContent = item.task === "cq2term"
+          ? "填写 CQ 包中的 prediction_template.json，覆盖全部 CQ ID。"
+          : "上传该领域最终合并的本体；normal / cqbycq / agent 只表示生成方法，log 不必上传。";
+        uploadLabel.append(uploadHint);
         const cqButton = document.createElement("button");
         cqButton.type = "button";
         cqButton.className = "text-button";

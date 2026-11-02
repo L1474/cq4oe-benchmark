@@ -2,10 +2,11 @@
 {% block title %}新建运行 · CQ4OE 评测台{% endblock %}
 {% block content %}
 <section class="page-heading"><div><p class="eyebrow">评测</p><h1>新建运行</h1></div></section>
+<div class="run-guide"><strong>先在外部生成，再上传评测</strong><span>下载所选领域的 CQ 包，用自己的 Agent 或脚本生成预测文件。每个任务 / 领域上传一个文件；生成日志无需上传。</span><a href="/guide">查看完整流程 →</a></div>
 <form id="run-form">
   <section class="workflow-section">
     <div class="section-heading"><span class="step-number">1</span><div><h2>选择 Agent 和模型</h2></div></div>
-    <div class="selection-row"><label>Agent<select id="run-agent" required><option value="">选择 Agent</option></select></label><label>模型<select id="run-model" required disabled><option value="">选择模型</option></select></label><a class="text-button" href="/agents">管理 Agent →</a></div>
+    <div class="selection-row"><label>Agent 标签<select id="run-agent" required><option value="">选择 Agent</option></select></label><label>模型标签<select id="run-model" required disabled><option value="">选择模型</option></select></label><a class="text-button" href="/agents">管理标签 →</a></div>
   </section>
   <section class="workflow-section">
     <div class="section-heading"><span class="step-number">2</span><div><h2>选择评测条目</h2></div></div>
@@ -21,6 +22,7 @@
   </section>
   <section class="workflow-section">
     <div class="section-heading"><span class="step-number">3</span><div><h2>上传预测产物</h2></div></div>
+    <div class="upload-requirements"><span><strong>CQ2Term：</strong>每个领域上传一个填写完整的 <code>prediction_template.json</code>。</span><span><strong>CQ2Onto：</strong>每个领域上传一个合并后的本体文件（<code>.owl/.rdf/.xml/.ttl/.nt/.n3</code>）。</span></div>
     <div id="selected-items" class="selected-items"><p class="muted">请先选择一个或多个评测条目。</p></div>
     <div class="form-actions run-actions"><button class="button primary" type="button" id="prepare-run">准备运行</button></div>
   </section>

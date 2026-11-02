@@ -4,7 +4,7 @@ CQ4OE 是评测流水线，不会替你生成本体。你需要先在六个领�
 
 推荐使用仓库自带的本地 Web 评测台；如果需要批量或脚本化运行，也可以按下面的命令行流程执行。
 
-Web 评测台的 Agent 管理页面使用完整模型表单，不需要浏览器弹窗。模型也可以通过 `POST /api/agents/<agent_id>/models`、`PATCH /api/models/<model_id>` 和 `GET /api/agents/<agent_id>/models` 管理；README 中有 curl 和 Python 示例。
+Web 评测台的 Agent/模型只作为结果标签，不需要配置模型接口。模型标签也可以通过 `POST /api/agents/<agent_id>/models`、`PATCH /api/models/<model_id>` 和 `GET /api/agents/<agent_id>/models` 管理。网页的“使用说明”列出了外部生成、逐条上传和查看结果的步骤。
 
 ## 1. 安装环境
 

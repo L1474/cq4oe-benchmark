@@ -193,6 +193,36 @@
     document.addEventListener("keydown", (event) => { if (!drawer.hidden) handleDialogKeys(event, drawer, close); });
   }
 
+  function setupEvaluationGuideTabs() {
+    $$('[data-guide-tabs] [role="tablist"], .guide-tab-panel [role="tablist"]').forEach((tablist) => {
+      const scope = tablist.closest("[role=tabpanel]") || tablist.closest("[data-guide-tabs]");
+      const tabs = $$('[role="tab"][aria-controls]', tablist);
+      const select = (tab, focus = false) => {
+        for (const candidate of tabs) {
+          const selected = candidate === tab;
+          candidate.setAttribute("aria-selected", String(selected));
+          candidate.tabIndex = selected ? 0 : -1;
+          const panel = $(`#${candidate.getAttribute("aria-controls")}`, scope);
+          if (panel) panel.hidden = !selected;
+        }
+        if (focus) tab.focus();
+      };
+      tabs.forEach((tab) => tab.addEventListener("click", () => select(tab)));
+      tablist.addEventListener("keydown", (event) => {
+        const current = tabs.indexOf(document.activeElement);
+        if (current < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+          : (current + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+        select(tabs[next], true);
+      });
+      const initiallySelected = tabs.find((tab) => tab.getAttribute("aria-selected") === "true") || tabs[0];
+      if (initiallySelected) select(initiallySelected);
+    });
+  }
+
+  setupEvaluationGuideTabs();
+
   function setupAgents() {
     const list = $("#agents-list");
     const form = $("#agent-form");

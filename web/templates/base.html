@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}CQ4OE 评测台{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css?v=20261102-log-drawer-v2">
-  <script src="/static/app.js?v=20261102-log-drawer-v3" defer></script>
+  <link rel="stylesheet" href="/static/app.css?v=20261102-evaluation-guide-v2">
+  <script src="/static/app.js?v=20261102-evaluation-guide-v2" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -14,6 +14,7 @@
       <nav class="primary-nav" aria-label="主导航">
         <a href="/runs/new" {% if request.url.path == '/runs/new' %}aria-current="page"{% endif %}>运行</a>
         <a href="/guide" {% if request.url.path == '/guide' %}aria-current="page"{% endif %}>使用说明</a>
+        <a href="/evaluation-guide" {% if request.url.path == '/evaluation-guide' %}aria-current="page"{% endif %}>评测说明</a>
         <a href="/records" {% if request.url.path.startswith('/records') or (request.url.path.startswith('/runs/') and request.url.path != '/runs/new') %}aria-current="page"{% endif %}>记录</a>
         <a href="/domains" {% if request.url.path.startswith('/domains') %}aria-current="page"{% endif %}>领域</a>
         <a href="/agents" {% if request.url.path == '/agents' %}aria-current="page"{% endif %}>Agent 管理</a>

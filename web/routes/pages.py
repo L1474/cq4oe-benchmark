@@ -88,6 +88,11 @@ def guide_page(request: Request):
     return _templates(request).TemplateResponse(request, "guide.html", {})
 
 
+@pages_router.get("/evaluation-guide", response_class=HTMLResponse)
+def evaluation_guide_page(request: Request):
+    return _templates(request).TemplateResponse(request, "evaluation_guide.html", {})
+
+
 @pages_router.get("/runs/new", response_class=HTMLResponse)
 def new_run_page(request: Request):
     domains = list_domains(request.app.state.settings.project_root)

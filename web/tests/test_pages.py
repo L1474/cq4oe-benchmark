@@ -29,7 +29,7 @@ def test_page_routes_render_and_domain_list_keeps_questions_in_detail(tmp_path):
         home = client.get("/", follow_redirects=False)
         assert home.status_code == 307
         assert home.headers["location"] == "/runs/new"
-        for path in ("/agents", "/runs/new", "/guide", "/domains", "/domains/alpha"):
+        for path in ("/agents", "/runs/new", "/guide", "/evaluation-guide", "/domains", "/domains/alpha"):
             response = client.get(path)
             assert response.status_code == 200, path
             assert "text/html" in response.headers["content-type"]
@@ -69,6 +69,23 @@ def test_model_form_uses_name_only_and_guide_explains_external_inputs(tmp_path):
         assert "ontology/" in guide
         assert "log/" in guide
         assert "normal" in guide and "cqbycq" in guide and "agent" in guide
+
+
+def test_evaluation_guide_has_task_and_dimension_tabs(tmp_path):
+    client = make_page_client(tmp_path)
+    with client:
+        page = client.get("/evaluation-guide").text
+        assert 'id="guide-tab-cq2term"' in page
+        assert 'id="guide-tab-cq2onto"' in page
+        for tab in ("alignment", "characteristics", "triple", "axiom", "hierarchy", "coverage"):
+            assert f'id="onto-tab-{tab}"' in page
+        assert "不会把答在别的 CQ 下的词项算作本题覆盖" in page
+        assert "语义候选（第 2 层）" in page
+        assert "全局（第 4 层）" in page
+        assert "只在已匹配属性对上统计" in page
+        assert "不是 Web 把一组分数机械填进固定表格" in page
+        assert "mismatch" in page
+        assert "HermiT" in page
 
 
 def test_domain_detail_exposes_task_cqs_and_task_bundle_links(tmp_path):

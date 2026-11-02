@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}评测方法与指标 · CQ4OE 评测台{% endblock %}
+{% block content %}
+<header class="page-heading"><div><p class="eyebrow">评分方法说明</p><h1>评测方法与指标</h1></div><a class="button primary" href="/runs/new">新建运行</a></header>
+<p class="guide-intro">这里解释分数如何得到、不同统计口径如何区分。评测台只运行仓库内的评分脚本；你的生成方法在外部运行。</p>
+
+<div class="evaluation-guide" data-guide-tabs>
+  <div class="guide-tabs" role="tablist" aria-label="评测模块">
+    <button type="button" role="tab" id="guide-tab-overview" aria-controls="guide-panel-overview" aria-selected="true" tabindex="0" data-guide-tab="overview">流程与共用概念</button>
+    <button type="button" role="tab" id="guide-tab-cq2term" aria-controls="guide-panel-cq2term" aria-selected="false" tabindex="-1" data-guide-tab="cq2term">CQ2Term</button>
+    <button type="button" role="tab" id="guide-tab-cq2onto" aria-controls="guide-panel-cq2onto" aria-selected="false" tabindex="-1" data-guide-tab="cq2onto">CQ2Onto</button>
+  </div>
+
+  <section id="guide-panel-overview" class="guide-tab-panel" role="tabpanel" aria-labelledby="guide-tab-overview" data-guide-panel="overview">
+    <section class="guide-band">
+      <h2>一次评测怎么进行</h2>
+      <ol class="evaluation-steps">
+        <li><strong>对齐输入。</strong> Web 根据任务和领域读取仓库中的 CQ 与金标准；上传文件只提供预测结果。</li>
+        <li><strong>准备词项对齐。</strong> CQ2Term 对类、属性词项建立一对一映射；CQ2Onto 先对齐本体中的类和属性，下游结构评测复用这份映射。</li>
+        <li><strong>评测结构与覆盖。</strong> CQ2Onto 继续检查属性特征、domain/range 三元组、TBox 公理和推理层级，并将结果关联回 CQ。</li>
+        <li><strong>保存结果。</strong> 结构化指标、TP/FP/FN、阶段日志、原始产物和脚本生成的 <code>report.md</code> 一起归档到本次 run。</li>
+      </ol>
+    </section>
+    <section class="guide-band">
+      <h2>共用分数</h2>
+      <dl class="metric-glossary">
+        <div><dt>TP（正确匹配）</dt><dd>预测项与金标准项按本维度规则匹配。</dd></div>
+        <div><dt>FP（多报）</dt><dd>预测存在，但金标准中没有对应项。</dd></div>
+        <div><dt>FN（漏报）</dt><dd>金标准要求，但预测没有覆盖。</dd></div>
+        <div><dt>精确率</dt><dd>TP / (TP + FP)。预测出来的项目有多少是对的；越低通常表示多报较多。</dd></div>
+        <div><dt>召回率</dt><dd>TP / (TP + FN)。金标准要求的项目覆盖了多少；越低通常表示漏报较多。</dd></div>
+        <div><dt>F1</dt><dd>精确率与召回率的调和平均。名称相同不代表统计范围相同，必须同时看任务、维度、层级和范围。</dd></div>
+      </dl>
+      <p class="guide-note">网页中的比例分数用 0～1 表示并显示两位小数；原始 JSON、CSV 和数据库保留计算精度。分母为 0 时指标可能为空，不应当作 0 分。</p>
+    </section>
+    <section class="guide-band">
+      <h2>原始报告为什么有时多、有时少</h2>
+      <p>报告模板由 CQ2Term / CQ2Onto 原评测脚本生成，数值和样例取自本次预测。主要评测步骤固定，但误报、漏报、错配、未对齐项等明细会按结果出现或省略；它不是 Web 把一组分数机械填进固定表格。报告正文目前保持脚本原有英文，运行详情额外提供中文指标摘要。</p>
+    </section>
+  </section>
+
+  <section id="guide-panel-cq2term" class="guide-tab-panel" role="tabpanel" aria-labelledby="guide-tab-cq2term" data-guide-panel="cq2term" hidden>
+    <p class="guide-lead">问题：模型能否找出回答每个 CQ 所需的类和属性？评测分两步：先统一词项，再检查词项是否出现在正确的 CQ。</p>
+    <div class="guide-tabs guide-subtabs" role="tablist" aria-label="CQ2Term 评测模块">
+      <button type="button" role="tab" id="term-tab-alignment" aria-controls="term-panel-alignment" aria-selected="true" tabindex="0" data-guide-tab="term-alignment">词项对齐</button>
+      <button type="button" role="tab" id="term-tab-score" aria-controls="term-panel-score" aria-selected="false" tabindex="-1" data-guide-tab="term-score">全领域分数</button>
+      <button type="button" role="tab" id="term-tab-coverage" aria-controls="term-panel-coverage" aria-selected="false" tabindex="-1" data-guide-tab="term-coverage">逐题覆盖</button>
+    </div>
+    <section id="term-panel-alignment" class="guide-tab-panel" role="tabpanel" aria-labelledby="term-tab-alignment" data-guide-panel="term-alignment">
+      <section class="guide-band"><h2>1. 词项匹配与对齐</h2>
+        <p>类和属性分别比较。脚本计算硬匹配、序列匹配、Levenshtein、Jaro-Winkler 和语义相似度。单项方法分数用于诊断候选词是否相似；它们不是最终总分。</p>
+        <p>最终映射将每个候选词对的 Top-N 方法分数取平均，低于阈值的候选被丢弃，再做一对一匹配。默认 Top-N 为 3，最终阈值为 0.6。这个映射用于判断不同写法是否表达同一金标准词项。</p>
+        <p class="guide-note">语义相似度表示词项文本/嵌入的接近程度，不等于本体结构正确，也不应单独当作任务得分。</p>
+      </section>
+    </section>
+    <section id="term-panel-score" class="guide-tab-panel" role="tabpanel" aria-labelledby="term-tab-score" data-guide-panel="term-score" hidden>
+      <section class="guide-band"><h2>2. 全领域词项 Precision / Recall / F1</h2>
+        <p>把整个领域所有 CQ 的唯一类和属性分别汇总后评分。类别结果可以分开看，也可以看“类与属性合并”的综合结果；记录页摘要展示综合分数。</p>
+        <p><strong>它不检查词项放在哪一道题下。</strong>只要预测词项在领域其他 CQ 出现，仍可能被全领域词项分数计为覆盖。因此它回答的是“词汇集合认得对不对”，不是“逐题理解对不对”。</p>
+      </section>
+    </section>
+    <section id="term-panel-coverage" class="guide-tab-panel" role="tabpanel" aria-labelledby="term-tab-coverage" data-guide-panel="term-coverage" hidden>
+      <section class="guide-band"><h2>3. CQ 覆盖率</h2>
+        <p>先用上一步的一对一词项映射，再逐 CQ 检查：映射后的预测词项是否出现在对应 CQ 的预测行中。默认使用 CQ 本地模式，不会把答在别的 CQ 下的词项算作本题覆盖。</p>
+        <dl class="metric-glossary">
+          <div><dt>逐题覆盖率</dt><dd>本题被覆盖的金标准类/属性数 ÷ 本题金标准类/属性总数。</dd></div>
+          <div><dt>至少覆盖一个</dt><dd>至少命中一个所需词项的 CQ 占全部 CQ 的比例。</dd></div>
+          <div><dt>平均覆盖率</dt><dd>先算每个 CQ 的覆盖比例，再对 CQ 取平均。网页摘要显示这一项。</dd></div>
+          <div><dt>完全覆盖</dt><dd>本题所有金标准类和属性都覆盖的 CQ 占全部 CQ 的比例。</dd></div>
+        </dl>
+        <p class="guide-note">全领域 F1 高、平均 CQ 覆盖低，通常表示词汇基本找对了，但有些词放错了问题，或漏掉了个别问题所需词项。</p>
+      </section>
+    </section>
+  </section>
+
+  <section id="guide-panel-cq2onto" class="guide-tab-panel" role="tabpanel" aria-labelledby="guide-tab-cq2onto" data-guide-panel="cq2onto" hidden>
+    <p class="guide-lead">问题：生成的本体是否包含金标准要求的词项、关系、公理和层级？CQ2Onto 按维度报告，不把这些内容合成一个总分。</p>
+    <div class="guide-tabs guide-subtabs onto-tabs" role="tablist" aria-label="CQ2Onto 评测维度">
+      <button type="button" role="tab" id="onto-tab-alignment" aria-controls="onto-panel-alignment" aria-selected="true" tabindex="0" data-guide-tab="onto-alignment">类与属性</button>
+      <button type="button" role="tab" id="onto-tab-characteristics" aria-controls="onto-panel-characteristics" aria-selected="false" tabindex="-1" data-guide-tab="onto-characteristics">属性特征</button>
+      <button type="button" role="tab" id="onto-tab-triple" aria-controls="onto-panel-triple" aria-selected="false" tabindex="-1" data-guide-tab="onto-triple">三元组</button>
+      <button type="button" role="tab" id="onto-tab-axiom" aria-controls="onto-panel-axiom" aria-selected="false" tabindex="-1" data-guide-tab="onto-axiom">公理</button>
+      <button type="button" role="tab" id="onto-tab-hierarchy" aria-controls="onto-panel-hierarchy" aria-selected="false" tabindex="-1" data-guide-tab="onto-hierarchy">层级闭包</button>
+      <button type="button" role="tab" id="onto-tab-coverage" aria-controls="onto-panel-coverage" aria-selected="false" tabindex="-1" data-guide-tab="onto-coverage">CQ 覆盖</button>
+    </div>
+    <section id="onto-panel-alignment" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-alignment" data-guide-panel="onto-alignment">
+      <section class="guide-band"><h2>1. 类与属性对齐</h2><p>分别把预测本体中的类、属性和金标准词项配对。每种匹配方法先独立报告相似度；最终对候选配对的 Top-N 方法分数聚合，应用阈值后建立一对一映射。</p><p>网页摘要中的类 F1 和属性 F1 是最终综合对齐的 Precision / Recall / F1。后续三元组、公理和层级评测会复用这份映射；如果映射错，错误可能继续影响下游结构分数。</p><p class="guide-note">报告里的单方法分数用于检查对齐过程。排查异常时，优先查看 alignment trace 和 best matching 文件。</p></section>
+    </section>
+    <section id="onto-panel-characteristics" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-characteristics" data-guide-panel="onto-characteristics" hidden>
+      <section class="guide-band"><h2>2. 属性特征</h2><p>检查已对齐的对象属性是否具有正确的 OWL 特征：Functional、InverseFunctional、Transitive、Symmetric、Asymmetric、Reflexive、Irreflexive。</p><p>这些特征逐项当作二元判断：金标准和预测都声明为 TP；金标准有而预测没有为 FN；预测多声明为 FP。Symmetric / Asymmetric、Reflexive / Irreflexive 是互斥语义对，错设会形成一边 FP、一边 FN。</p><p>对齐范围只在已匹配属性对上统计；本体级范围还会把带特征但没有匹配到的金标准对象属性计为漏项。两个范围的分母不同，不能只比指标名。</p></section>
+    </section>
+    <section id="onto-panel-triple" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-triple" data-guide-panel="onto-triple" hidden>
+      <section class="guide-band"><h2>3. domain / range 三元组</h2><p>提取 <code>rdfs:domain</code> 和 <code>rdfs:range</code> 声明，检查每个属性的定义域、值域及类型。</p><dl class="metric-glossary"><div><dt>语义诊断（第 2 层）</dt><dd>嵌入相似度用于观察候选语义接近程度，不是严格结构正确率。</dd></div><div><dt>对齐条件（第 3 层）</dt><dd>只评估已对齐属性；domain 用类映射比较，range 按对象/数据属性类型处理。</dd></div><div><dt>全局（第 4 层）</dt><dd>把未对齐属性上的声明也纳入总体范围。对齐范围高而全局低，说明结构可能不错，但词项对齐或覆盖存在缺口。</dd></div><div><dt>mismatch</dt><dd>双方都声明了值但不一致；评分同时增加一个 FP 和一个 FN。</dd></div></dl></section>
+    </section>
+    <section id="onto-panel-axiom" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-axiom" data-guide-panel="onto-axiom" hidden>
+      <section class="guide-band"><h2>4. Atomic TBox 与公理评测</h2><p><strong>Atomic TBox 提取是中间步骤，不是分数。</strong>评测器从上传本体提取原子 TBox 公理，供后续对齐和比较使用。报告和产物会保留 JSON / TXT / XLSX 等文件。</p><dl class="metric-glossary"><div><dt>语义候选（第 2 层）</dt><dd>嵌入相似度帮助检索候选公理，是诊断信息，不等价于结构匹配。</dd></div><div><dt>严格对齐（第 3 层）</dt><dd>复用类/属性映射后比较公理结构。正确为 TP；缺失、多余为 FN / FP；同类公理结构不一致的 mismatch 同时计 FP 和 FN。</dd></div><div><dt>全局（第 4 层）</dt><dd>在严格结果上纳入未对齐主题上的公理：未对齐预测公理增加 FP，未对齐金标准公理增加 FN。</dd></div></dl><p class="guide-note">公理的全局 F1 低于严格 F1，常见原因是词项没对齐或额外生成了公理；严格 F1 低则表示已对齐词项上的公理结构仍有差异。</p></section>
+    </section>
+    <section id="onto-panel-hierarchy" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-hierarchy" data-guide-panel="onto-hierarchy" hidden>
+      <section class="guide-band"><h2>5. 层级闭包</h2><p>使用 HermiT reasoner 计算类和属性的可推出层级关系，再和金标准层级比较。指标包括类层级、属性层级和合并后的层级 Precision / Recall / F1。</p><p>闭包会计入显式声明之外、可由推理推出的关系。它衡量的是逻辑推论是否一致，不表示预测文件中显式写出了所有这些关系。</p><p>层级 F1 看推理关系整体匹配；闭包 CQ 覆盖看推理能否补足回答每道 CQ 所需的公理关系。</p></section>
+    </section>
+    <section id="onto-panel-coverage" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-coverage" data-guide-panel="onto-coverage" hidden>
+      <section class="guide-band"><h2>6. CQ 公理覆盖</h2><p>每道金标准 CQ 都关联一组所需 TBox 公理。脚本计算至少覆盖一个、平均覆盖率和完全覆盖三种结果：</p><ul><li><strong>至少一项：</strong>至少匹配一条所需公理的 CQ 占比。</li><li><strong>平均覆盖：</strong>各 CQ 已覆盖公理数 / 该题所需公理数，再对 CQ 取平均。</li><li><strong>完全覆盖：</strong>所需公理全部覆盖的 CQ 占比。</li></ul><p>严格覆盖只算直接匹配公理；闭包覆盖额外检查 HermiT 推出的层级关系。两种覆盖率是不同口径，不能互相替代。</p></section>
+    </section>
+  </section>
+</div>
+{% endblock %}

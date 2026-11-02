@@ -9,8 +9,16 @@ Web 评测台的 Agent/模型只作为结果标签，不需要配置模型接口
 ## 1. 安装环境
 
 ```bash
-git clone https://github.com/oeg-upm/cq4oe-benchmark.git
+git clone https://github.com/L1474/cq4oe-benchmark.git
 cd cq4oe-benchmark
+docker compose up --build -d
+```
+
+启动后打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。Docker Compose 会提供 Python、Java、Ollama 和持久化目录。
+
+如需自行运行命令行评测脚本，再安装 Python 3.10 依赖：
+
+```bash
 conda create -n cq4oe python=3.10 -y
 conda activate cq4oe
 pip install -r requirements.txt
@@ -22,8 +30,6 @@ CQ2Onto 的层级评测需要 Java/HermiT；请确认 `java -version` 可用。T
 ollama pull embeddinggemma
 ollama serve
 ```
-
-Docker Compose 会自动提供 Python、Java、Ollama 和持久化目录；普通使用建议优先采用 Docker 方式。
 
 ## 2. 选择任务和输入
 

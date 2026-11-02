@@ -1,4 +1,0 @@
-Redundant pairs based on WordNet synonyms:
-
-Total redundant pairs: 0
-Average redundant pairs per concept: 0.000000

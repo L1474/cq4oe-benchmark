@@ -46,31 +46,6 @@ docker compose logs -f app ollama
 
 记录页优先展示有明确口径的关键分数，网页数值保留两位小数；数据库和原始文件保留完整精度。运行详情的中文指标摘要由 Web 从结构化结果整理。下载的 `report.md` 仍是原项目 CQ2Term/CQ2Onto 评测脚本生成的英文原文，可在详情页展开查看。
 
-### 模型标签和 API
-
-Agent 管理页面只需填写模型名称。它是运行记录的标签，不是模型连接配置；当前 Web 不需要接口地址或 API Key。
-
-也可以通过 HTTP 或 Python 管理模型：
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/agents/<agent_id>/models \
-  -H "Content-Type: application/json" \
-  -d '{"name":"deepseek-v4-pro"}'
-```
-
-对应的 Python 调用：
-
-```python
-import requests
-
-requests.post(
-    "http://127.0.0.1:8000/api/agents/<agent_id>/models",
-    json={"name": "deepseek-v4-pro"},
-).raise_for_status()
-```
-
-编辑模型使用 `PATCH /api/models/<model_id>`，查询使用 `GET /api/agents/<agent_id>/models`。
-
 ### 数据保存与备份
 
 主机 `./data` 挂载到容器的 `/app/data`，包含 `evaluator.sqlite3` 和 `runs/<run-id>/` 下的输入、日志、工作文件、报告与结果。停止并重启不会丢失数据：

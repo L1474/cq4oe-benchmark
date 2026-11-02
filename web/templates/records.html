@@ -16,10 +16,10 @@
   <label class="toggle-label"><input type="checkbox" id="trend-toggle" checked> 显示趋势</label>
   <button type="button" class="button" id="clear-record-filters">清除筛选</button>
 </section>
-<div class="records-selection"><span id="record-count" class="muted">正在加载记录…</span><button type="button" class="button" id="compare-selected" disabled>对比所选记录</button></div>
+<div class="records-selection"><span id="record-count" class="muted">正在加载记录…</span><div class="records-actions"><a class="text-button" href="/guide#metrics">指标说明 →</a><button type="button" class="button" id="compare-selected" disabled>对比所选记录</button></div></div>
 <div class="table-scroll">
   <table class="data-table records-table">
-    <thead><tr><th>选择</th><th>创建时间</th><th>Agent / 模型</th><th>任务 / 领域</th><th>状态</th><th>指标</th><th>趋势</th></tr></thead>
+    <thead><tr><th>选择</th><th>创建时间 / Run ID</th><th>Agent / 模型</th><th>任务 / 领域</th><th>状态</th><th>关键分数</th><th>较上次</th></tr></thead>
     <tbody id="records-body"><tr><td colspan="7">正在加载记录…</td></tr></tbody>
   </table>
 </div>

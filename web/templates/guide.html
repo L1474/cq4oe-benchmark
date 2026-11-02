@@ -39,4 +39,19 @@ cqbycq/你的模型/log/wine_log.txt            ← 生成日志，可留在本�
   <div class="guide-number">04</div>
   <div><h2>查看结果与对比</h2><p>提交后到<a href="/records">运行记录</a>查看状态。运行详情展示分层指标、阶段日志、<code>report.md</code> 和可下载的原始产物；记录页可以筛选并对比 2～4 次运行。</p></div>
 </section>
+
+<section class="guide-section" id="metrics">
+  <div class="guide-number">05</div>
+  <div><h2>指标怎么读</h2><p>网页分数按 0～1 显示两位小数，数值越高通常越好；数据库和下载的原始结果保留完整精度。趋势只对任务、领域、金标准、评测器及配置兼容的记录计算。</p>
+    <dl class="metric-glossary">
+      <div><dt>精确率</dt><dd>预测为正确的项中，真正匹配金标准的比例：TP / (TP + FP)。</dd></div>
+      <div><dt>召回率</dt><dd>金标准项中，被预测覆盖的比例：TP / (TP + FN)。</dd></div>
+      <div><dt>F1</dt><dd>精确率和召回率的调和平均。相同名称的 F1 必须结合维度、层级和统计范围阅读。</dd></div>
+      <div><dt>CQ 覆盖率</dt><dd>逐题查看该 CQ 所需词项或公理被覆盖的比例；“平均”是各 CQ 覆盖率的平均，不等同于全领域词项分数。</dd></div>
+      <div><dt>AC / 全局</dt><dd>AC 只比较已经对齐的项；全局包含未对齐项。三元组、公理等维度应优先核对统计范围。</dd></div>
+      <div><dt>严格 / 闭包</dt><dd>严格匹配只计直接匹配的公理；闭包还计入 HermiT 推理得到的层级关系。</dd></div>
+    </dl>
+    <p>CQ2Onto 分别评估类、属性、三元组、公理和层级，没有单一总分。原始 <code>report.md</code> 是仓库内评测脚本生成的英文报告；运行详情另提供基于结构化指标的中文摘要。</p>
+  </div>
+</section>
 {% endblock %}

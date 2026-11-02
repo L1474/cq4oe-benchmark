@@ -9,11 +9,15 @@
     pending: "待处理", blocked: "已阻塞", started: "已开始",
   };
   const DIMENSION_LABELS = {
+    term: "词项", class: "类", property: "属性", property_characteristic: "属性特征",
+    class_hierarchy: "类层级", property_hierarchy: "属性层级",
     ClassProperty: "类与属性", PropertyCharacteristics: "属性特征", Triple: "三元组", Axiom: "公理",
     HierarchyClosure: "层级闭包", CQCoverage: "CQ 覆盖率", class_property: "类与属性",
     property_characteristics: "属性特征", triple: "三元组", axiom: "公理", hierarchy: "层级闭包", cq_coverage: "CQ 覆盖率",
   };
   const METRIC_LABELS = {
+    any_cq_coverage: "至少一项 CQ 覆盖率", fully_cq_coverage: "完全 CQ 覆盖率",
+    average_cq_coverage: "平均 CQ 覆盖率",
     hard_match: "硬匹配", sequence_match: "序列匹配", levenshtein_distance: "Levenshtein 距离",
     jaro_winkler_distance: "Jaro-Winkler 距离", semantic_cosine_similarity: "语义余弦相似度",
     aggregated_top3: "Top-3 聚合", precision: "精确率", recall: "召回率", f1: "F1",
@@ -21,11 +25,15 @@
     full_coverage: "完整覆盖率", closure_rescue_coverage: "闭包补救覆盖率", coverage: "覆盖率",
   };
   const LAYER_LABELS = {
+    terms: "全领域词项", aggregated: "综合对齐", characteristics: "属性特征", cq_coverage: "CQ 覆盖",
+    closure: "推理闭包", layer2_semantic: "第 2 层（语义诊断）", layer4_global: "第 4 层（全局）",
     layer1: "第 1 层", layer2: "第 2 层", layer3: "第 3 层", layer4: "第 4 层", layer5: "第 5 层", layer6: "第 6 层",
     layer1_exact: "第 1 层（精确）", layer2_pair: "第 2 层（配对）", layer3_strict: "第 3 层（严格）",
     layer4_atomic: "第 4 层（原子）", layer5_closure: "第 5 层（闭包）", layer6_cq: "第 6 层（CQ）",
   };
   const SCOPE_LABELS = {
+    combined: "类与属性合并", class_only: "仅类", property_only: "仅属性", aggregate: "综合",
+    semantic: "语义诊断", strict: "严格匹配", per_cq_mean: "逐题平均",
     global: "整体", per_cq: "按 CQ", per_item: "按条目", alignment_conditioned: "在对齐条件下",
     gold_vocabulary: "金标准词汇", predicted_vocabulary: "预测词汇", closure: "推理闭包",
   };
@@ -35,7 +43,13 @@
   const dimensionLabel = (value) => label(value, DIMENSION_LABELS);
   const metricLabel = (value) => label(value, METRIC_LABELS);
   const layerLabel = (value) => label(value, LAYER_LABELS);
-  const scopeLabel = (value) => label(value, SCOPE_LABELS);
+  const scopeLabel = (value) => value?.startsWith("cq:") ? `${value.slice(3)}（逐题）` : label(value, SCOPE_LABELS);
+  const scoreText = (value) => value == null || !Number.isFinite(Number(value)) ? "—" : Number(value).toFixed(2);
+  const deltaText = (value) => {
+    if (value === 0) return "0.00";
+    const sign = value > 0 ? "+" : "−";
+    return `${sign}${Math.abs(value) < 0.005 ? "<0.01" : Math.abs(value).toFixed(2)}`;
+  };
   const localizeError = (message, status) => {
     const text = String(message || "");
     const replacements = [
@@ -863,6 +877,46 @@
       }
       return params;
     };
+    const appendScoreRows = (cell, entries, { trend = false, multipleItems = false } = {}) => {
+      if (!entries?.length) {
+        const empty = document.createElement("span");
+        empty.className = "muted";
+        empty.textContent = trend ? "暂无可比指标" : "尚无分数";
+        cell.append(empty);
+        return;
+      }
+      const makeRow = (entry) => {
+        const row = document.createElement("div");
+        row.className = `score-row${trend ? ` ${entry.improved === true ? "trend-improved" : entry.improved === false ? "trend-declined" : "trend-neutral"}` : ""}`;
+        const name = document.createElement("span");
+        name.className = "score-name";
+        name.textContent = `${multipleItems ? `${taskLabel(entry.task)}/${entry.domain} · ` : ""}${entry.label}`;
+        name.title = entry.description || "";
+        const value = document.createElement("strong");
+        value.className = "score-value";
+        value.textContent = trend
+          ? `${entry.improved === true ? "↑ " : entry.improved === false ? "↓ " : "· "}${deltaText(entry.delta)}`
+          : scoreText(entry.value);
+        value.title = trend ? `上次 ${scoreText(entry.previous)}，本次 ${scoreText(entry.value)}` : name.title;
+        row.append(name, value);
+        return row;
+      };
+      const list = document.createElement("div");
+      list.className = "score-list";
+      entries.slice(0, 4).forEach((entry) => list.append(makeRow(entry)));
+      cell.append(list);
+      if (entries.length > 4) {
+        const more = document.createElement("details");
+        more.className = "score-more";
+        const summary = document.createElement("summary");
+        summary.textContent = `其余 ${entries.length - 4} 项`;
+        const rest = document.createElement("div");
+        rest.className = "score-list";
+        entries.slice(4).forEach((entry) => rest.append(makeRow(entry)));
+        more.append(summary, rest);
+        cell.append(more);
+      }
+    };
     const refresh = async () => {
       try {
         const response = await request(`/api/runs?${query()}`);
@@ -876,26 +930,31 @@
           check.addEventListener("change", () => { check.checked ? selected.add(run.id) : selected.delete(run.id); updateCompare(); });
           checkCell.append(check);
           const link = (text, href) => { const a = document.createElement("a"); a.href = href; a.textContent = text; return a; };
-          const created = document.createElement("td"); created.textContent = new Date(run.created_at).toLocaleString();
-          const agent = document.createElement("td"); agent.append(document.createTextNode(`${run.agent_name} / ${run.model_name}`));
-          const taskDomain = document.createElement("td"); taskDomain.textContent = run.items.map((item) => `${taskLabel(item.task)} / ${item.domain}`).join(", ");
-          const state = document.createElement("td"); state.textContent = statusLabel(run.status);
-          const metrics = document.createElement("td"); metrics.textContent = run.metrics.filter((metric) => ["f1", "precision", "recall", "coverage"].includes(metric.metric_name)).map((metric) => `${taskLabel(metric.task)}/${metric.domain} ${dimensionLabel(metric.dimension)} ${metricLabel(metric.metric_name)}：${metric.value ?? "—"}`).join(" · ") || "—";
+          const created = document.createElement("td");
+          const agent = document.createElement("td");
+          const agentName = document.createElement("strong"); agentName.textContent = run.agent_name;
+          const modelName = document.createElement("small"); modelName.textContent = run.model_name;
+          agent.append(agentName, modelName);
+          const taskDomain = document.createElement("td"); taskDomain.textContent = run.items.map((item) => `${taskLabel(item.task)} / ${item.domain}`).join(" · ");
+          const state = document.createElement("td");
+          const stateText = document.createElement("span"); stateText.className = `state-pill state-${run.status}`;
+          stateText.textContent = statusLabel(run.status); state.append(stateText);
+          const metrics = document.createElement("td");
+          appendScoreRows(metrics, run.summary_metrics, { multipleItems: run.items.length > 1 });
           const trend = document.createElement("td");
           if (run.trend.previous_run_id) {
-            trend.append(link(`对比 ${run.trend.previous_run_id.slice(0, 8)}`, `/compare?run_ids=${encodeURIComponent(run.trend.previous_run_id)},${encodeURIComponent(run.id)}`));
-            for (const delta of run.trend.deltas || []) {
-              const indicator = document.createElement("span");
-              indicator.className = delta.improved === true ? "trend-improved" : delta.improved === false ? "trend-declined" : "trend-neutral";
-              indicator.textContent = ` ${delta.improved === true ? "↑" : delta.improved === false ? "↓" : "·"} ${metricLabel(delta.key[4])} ${delta.delta > 0 ? "+" : ""}${Number(delta.delta).toFixed(3)}`;
-              trend.append(indicator);
-            }
+            const previous = link(`对比上次 ${run.trend.previous_run_id.slice(0, 8)} →`, `/compare?run_ids=${encodeURIComponent(run.trend.previous_run_id)},${encodeURIComponent(run.id)}`);
+            previous.className = "previous-link";
+            trend.append(previous);
+            appendScoreRows(trend, run.trend.headline_deltas, { trend: true, multipleItems: run.items.length > 1 });
           } else trend.textContent = $("#trend-toggle").checked ? "没有可对比的记录" : "已关闭";
           const runLink = link(run.id.slice(0, 8), `/runs/${encodeURIComponent(run.id)}`);
-          created.prepend(runLink);
+          runLink.className = "row-link";
+          const time = document.createElement("small"); time.textContent = new Date(run.created_at).toLocaleString("zh-CN");
+          created.append(runLink, time);
           row.append(checkCell, created, agent, taskDomain, state, metrics, trend); body.append(row);
         }
-        if (!response.items.length) { const row = document.createElement("tr"); const cell = document.createElement("td"); cell.colSpan = 7; cell.textContent = "没有符合筛选条件的运行记录。"; row.append(cell); body.append(row); }
+        if (!response.items.length) { const row = document.createElement("tr"); row.className = "record-empty"; const cell = document.createElement("td"); cell.colSpan = 7; cell.textContent = "没有符合筛选条件的运行记录。"; row.append(cell); body.append(row); }
         $("#record-count").textContent = `共 ${response.total} 条记录`;
         $("#records-page").textContent = `第 ${response.page} 页，共 ${Math.max(1, Math.ceil(response.total / response.page_size))} 页`;
         $("#records-prev").disabled = page <= 1;
@@ -928,21 +987,80 @@
     try {
       const result = await request("/api/runs/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_ids: root.dataset.runIds.split(",") }) });
       $("#compare-intersection").textContent = `共有 ${result.intersection_count} 个领域：${result.domains.join(", ") || "无"}`;
-      for (const run of result.runs) {
+      for (const [index, run] of result.runs.entries()) {
         const heading = $(`[data-compare-run-id="${run.id}"]`);
         if (!heading) continue;
+        const existing = $("small", heading);
+        if (existing) existing.textContent = `${statusLabel(run.status)} · ${new Date(run.created_at).toLocaleString("zh-CN")}`;
         const context = document.createElement("small");
-        context.textContent = `${run.agent_name} / ${run.model_name} · 配置 ${JSON.stringify(run.config)}`;
+        context.textContent = `${run.agent_name} / ${run.model_name}${index === 0 ? " · 基准" : ""}`;
         heading.append(context);
       }
-      body.replaceChildren();
-      for (const metric of result.metrics) {
-        const row = document.createElement("tr");
-        const label = document.createElement("th"); label.textContent = `${taskLabel(metric.key[0])} / ${metric.key[1]} · ${dimensionLabel(metric.key[2])} · ${layerLabel(metric.key[3])} · ${metricLabel(metric.key[4])} · ${scopeLabel(metric.key[6])}`; row.append(label);
-        for (const entry of metric.entries) { const cell = document.createElement("td"); cell.textContent = entry.value == null ? "—" : `${Number(entry.value).toFixed(4)}${entry.delta == null ? "" : ` (${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toFixed(4)})`}`; if (entry.improved === true) cell.classList.add("metric-improved"); if (entry.improved === false) cell.classList.add("metric-declined"); row.append(cell); }
-        body.append(row);
+      const summaryMaps = result.runs.map((run) => new Map((run.summary_metrics || [])
+        .filter((metric) => result.domains.includes(metric.domain))
+        .map((metric) => [JSON.stringify(metric.key), metric])));
+      const orderedSummary = [];
+      const seen = new Set();
+      for (const run of result.runs) for (const metric of run.summary_metrics || []) {
+        const key = JSON.stringify(metric.key);
+        if (!result.domains.includes(metric.domain) || seen.has(key)) continue;
+        seen.add(key);
+        orderedSummary.push(metric);
       }
-      if (!result.metrics.length) body.innerHTML = `<tr><td colspan="${result.run_ids.length + 1}">共同领域中没有可对比的指标。</td></tr>`;
+      const summaryRows = orderedSummary.map((metric) => {
+        const values = summaryMaps.map((map) => map.get(JSON.stringify(metric.key))?.value ?? null);
+        const baseline = values[0];
+        return {
+          key: [metric.task, metric.domain, metric.dimension, metric.layer, metric.metric_name, "ratio", metric.scope],
+          label: metric.label,
+          description: metric.description,
+          entries: values.map((value, index) => {
+            const delta = index && value != null && baseline != null ? value - baseline : null;
+            return { value, delta, improved: delta == null || delta === 0 ? null : delta > 0 };
+          }),
+        };
+      });
+      const allRows = [...result.metrics].sort((a, b) => {
+        const priority = (metric) => metric.key[6]?.startsWith("cq:") ? 2 : metric.key[6] === "combined" ? 0 : 1;
+        return priority(a) - priority(b) || JSON.stringify(a.key).localeCompare(JSON.stringify(b.key));
+      });
+      const render = (view) => {
+        $$('[data-compare-view]', root).forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.compareView === view)));
+        body.replaceChildren();
+        const rows = view === "all" ? allRows : summaryRows;
+        for (const metric of rows) {
+          const row = document.createElement("tr");
+          const task = document.createElement("th"); task.scope = "row";
+          task.textContent = `${taskLabel(metric.key[0])} / ${metric.key[1]}`;
+          const dimension = document.createElement("td"); dimension.textContent = dimensionLabel(metric.key[2]);
+          const scope = document.createElement("td"); scope.textContent = `${layerLabel(metric.key[3])} · ${scopeLabel(metric.key[6])}`;
+          const name = document.createElement("td"); name.textContent = metric.label || metricLabel(metric.key[4]);
+          name.title = metric.description || `${dimension.textContent}，${scope.textContent}。完整定义见指标说明。`;
+          row.append(task, dimension, scope, name);
+          for (const entry of metric.entries) {
+            const cell = document.createElement("td");
+            cell.className = "compare-value";
+            const value = document.createElement("strong"); value.textContent = scoreText(entry.value);
+            cell.append(value);
+            if (entry.delta != null) {
+              const delta = document.createElement("small");
+              delta.className = entry.improved === true ? "metric-improved" : entry.improved === false ? "metric-declined" : "";
+              delta.textContent = `${entry.improved === true ? "↑ " : entry.improved === false ? "↓ " : "· "}${deltaText(entry.delta)}`;
+              cell.append(delta);
+            }
+            row.append(cell);
+          }
+          body.append(row);
+        }
+        if (!rows.length) {
+          const row = document.createElement("tr");
+          const cell = document.createElement("td"); cell.colSpan = result.run_ids.length + 4;
+          cell.textContent = "共同领域中没有可对比的指标。";
+          row.append(cell); body.append(row);
+        }
+      };
+      $$('[data-compare-view]', root).forEach((button) => button.addEventListener("click", () => render(button.dataset.compareView)));
+      render("summary");
     } catch (error) { body.textContent = error.message; }
   }
 

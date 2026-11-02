@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}运行对比 · CQ4OE 评测台{% endblock %}
 {% block content %}
-<header class="page-heading"><div><p class="eyebrow"><a href="/records">运行记录</a></p><h1>运行对比</h1></div></header>
+<header class="page-heading"><div><p class="eyebrow"><a href="/records">运行记录</a></p><h1>运行对比</h1></div><a class="text-button" href="/guide#metrics">指标说明 →</a></header>
 <div id="compare-root" data-run-ids="{{ runs|map(attribute='id')|join(',') }}">
 {% if runs|length < 2 %}<p class="muted">请在运行记录中选择 2～4 条记录，对比共同领域和指标变化。</p>
-{% else %}<p class="compare-intersection" id="compare-intersection">正在对比 {{ runs|length }} 条运行记录…</p><div class="table-scroll"><table class="data-table"><thead><tr><th>指标</th>{% for run in runs %}<th data-compare-run-id="{{ run.id }}"><a href="/runs/{{ run.id }}">{{ run.id[:8] }}</a><small>{{ run.status|status_label }} · {{ run.created_at }}</small></th>{% endfor %}</tr></thead><tbody id="compare-body"><tr><td colspan="{{ runs|length + 1 }}">正在加载对比结果…</td></tr></tbody></table></div>{% endif %}
+{% else %}<p class="compare-intersection" id="compare-intersection">正在对比 {{ runs|length }} 条运行记录…</p><div class="compare-toolbar"><div class="segmented-control" role="group" aria-label="指标视图"><button type="button" data-compare-view="summary" aria-pressed="true">关键指标</button><button type="button" data-compare-view="all" aria-pressed="false">全部指标</button></div><span class="muted">首条记录为对比基准</span></div><div class="table-scroll"><table class="data-table compare-table"><thead><tr><th>任务 / 领域</th><th>维度</th><th>层级 / 范围</th><th>指标</th>{% for run in runs %}<th data-compare-run-id="{{ run.id }}"><a href="/runs/{{ run.id }}">{{ run.id[:8] }}</a><small>{{ run.status|status_label }} · {{ run.created_at }}</small></th>{% endfor %}</tr></thead><tbody id="compare-body"><tr><td colspan="{{ runs|length + 4 }}">正在加载对比结果…</td></tr></tbody></table></div>{% endif %}
 </div>
 {% endblock %}

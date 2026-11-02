@@ -84,7 +84,7 @@ def test_domain_detail_exposes_task_cqs_and_task_bundle_links(tmp_path):
 
 
 def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
-    from web.repositories import add_artifact, create_agent, create_model, create_run
+    from web.repositories import add_artifact, create_agent, create_model, create_run, save_metrics
 
     client = make_page_client(tmp_path)
     app = client.app
@@ -103,6 +103,10 @@ def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
                            config={}, runs_root=app.state.settings.runs_root, initial_status="completed")
                 for _ in range(2)]
         run = runs[0]
+        save_metrics(app.state.settings.database_path, user_id="local", run_id=run["id"], metrics=[{
+            "run_item_id": run["items"][0]["id"], "dimension": "class", "layer": "aggregated",
+            "metric_name": "f1", "scope": "aggregate", "value": 0.555555, "unit": "ratio",
+        }])
         report = "# Report\n\n<script>alert(1)</script>\n\n## Class\n\n| Metric | Value |\n| --- | --- |\n| F1 | 0.5 |\n"
         report_path = app.state.settings.runs_root / run["id"] / "results" / "report.md"
         report_path.parent.mkdir(parents=True)
@@ -126,10 +130,17 @@ def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
         assert 'href="#report-1-class"' in detail.text
         assert 'id="report-1-class"' in detail.text
         assert "Second complete report." in detail.text
+        assert "中文指标摘要" in detail.text
+        assert "查看原始英文报告" in detail.text
+        assert "0.56" in detail.text
+        assert "原始 report.md 由 CQ2Term / CQ2Onto 评测脚本生成" in detail.text
         assert 'href="#report-2-property"' in detail.text
         assert "CQ2ONTO / alpha" in detail.text
         assert '<pre>{}</pre>' in detail.text
-        assert client.get(f"/compare?run_ids={runs[0]['id']},{runs[1]['id']}").status_code == 200
+        comparison = client.get(f"/compare?run_ids={runs[0]['id']},{runs[1]['id']}")
+        assert comparison.status_code == 200
+        assert 'data-compare-view="summary"' in comparison.text
+        assert 'data-compare-view="all"' in comparison.text
 
 
 def test_artifact_list_distinguishes_duplicate_names_by_item(tmp_path):

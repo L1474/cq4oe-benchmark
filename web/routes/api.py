@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from web.services.comparison import compare_runs, find_previous_comparable_run
+from web.services.presentation import summarize_run, summarize_trend
 
 from web.db import connect_database
 from web.domain.bundles import build_cq_bundle
@@ -313,8 +314,10 @@ def runs(request: Request, agent_id: str | None = None, model_id: str | None = N
         run.update({key: row[key] for key in ("agent_name", "model_name", "model_label")})
         previous = find_previous_comparable_run(run, [candidate for candidate in all_runs if candidate["id"] != run["id"]]) if trend else None
         public = _public_run(run)
+        public["summary_metrics"] = summarize_run(run)
         public["trend"] = {"enabled": trend, "previous_run_id": previous["id"] if previous else None}
         if previous:
+            public["trend"]["headline_deltas"] = summarize_trend(run, previous)
             public["trend"]["deltas"] = [{"key": list(comparison.key), "delta": entry.delta,
                 "improved": entry.improved, "current": entry.current.get("value") if entry.current else None,
                 "previous": entry.previous.get("value") if entry.previous else None}
@@ -360,7 +363,8 @@ def compare_runs_route(request: Request, body: CompareInput):
             "runs": [{"id": run["id"], "agent_name": labels[run["id"]]["agent_name"],
                       "model_name": labels[run["id"]]["model_name"],
                       "model_label": labels[run["id"]]["model_label"],
-                      "config": json.loads(run["config_json"]), "status": run["status"]}
+                      "config": json.loads(run["config_json"]), "status": run["status"],
+                      "created_at": run["created_at"], "summary_metrics": summarize_run(run)}
                      for run in records],
             "metrics": [{"key": list(metric.key), "entries": [{"delta": entry.delta,
                          "comparable": entry.comparable, "reason": entry.reason,

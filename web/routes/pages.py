@@ -13,7 +13,8 @@ from fastapi.templating import Jinja2Templates
 from web.db import connect_database
 from web.domain.catalog import get_domain_detail, list_domains
 from web.repositories import get_run, list_agents, resolve_artifact_path
-from web.i18n import (dimension_label, event_label, layer_label, metric_label,
+from web.services.presentation import summarize_run
+from web.i18n import (dimension_label, event_label, layer_label, metric_description, metric_label,
                       scope_label, stage_label, status_label, task_label, unit_label)
 
 pages_router = APIRouter()
@@ -50,12 +51,13 @@ def _report_sections(safe_html: str) -> list[dict]:
     parser = _ReportHeadings()
     parser.feed(safe_html)
     sections = []
-    for label in ("Class", "Property", "Triple", "Axiom", "Hierarchy"):
+    labels = {"Class": "类", "Property": "属性", "Triple": "三元组", "Axiom": "公理", "Hierarchy": "层级"}
+    for label, translated in labels.items():
         candidates = [heading for heading in parser.headings if label.lower() in heading["text"]]
         if label == "Property":
             candidates = [heading for heading in candidates if "triple" not in heading["text"]]
         if candidates:
-            sections.append({"label": label, "id": candidates[0]["id"]})
+            sections.append({"label": translated, "id": candidates[0]["id"]})
     return sections
 
 
@@ -65,6 +67,7 @@ def _templates(request: Request) -> Jinja2Templates:
         "dimension_label": dimension_label,
         "layer_label": layer_label,
         "metric_label": metric_label,
+        "metric_description": metric_description,
         "scope_label": scope_label,
         "status_label": status_label,
         "task_label": task_label,
@@ -136,6 +139,7 @@ def run_detail_page(request: Request, run_id: str):
         else:
             artifact["context_label"] = f"运行 · {artifact['category']}/{artifact['name']}"
     reports = []
+    headline_metrics = summarize_run(run)
     report_artifacts = [artifact for artifact in run["artifacts"] if artifact["name"].lower() == "report.md"]
     for index, report_artifact in enumerate(report_artifacts, start=1):
         try:
@@ -148,8 +152,11 @@ def run_detail_page(request: Request, run_id: str):
                 attributes={"a": ["href", "title"], "h1": ["id"], "h2": ["id"], "h3": ["id"], "h4": ["id"]},
                 protocols={"http", "https", "mailto"})
             item = next((item for item in run["items"] if item["id"] == report_artifact["run_item_id"]), None)
+            summary = ([metric for metric in headline_metrics
+                        if metric["task"] == item["task"] and metric["domain"] == item["domain"]]
+                       if item else headline_metrics)
             reports.append({"html": report_html, "sections": _report_sections(report_html),
-                            "artifact": report_artifact, "item": item})
+                            "artifact": report_artifact, "item": item, "summary": summary})
         except (OSError, UnicodeError, ValueError):
             continue
     return _templates(request).TemplateResponse(request, "run_detail.html", {

@@ -72,6 +72,8 @@ def test_records_trend_returns_only_prior_comparable_run(tmp_path):
         row = next(row for row in response.json()["items"] if row["id"] == current["id"])
 
         assert row["trend"]["previous_run_id"] == prior["id"]
+        assert row["summary_metrics"][0]["label"] == "类 F1"
+        assert row["trend"]["headline_deltas"][0]["label"] == "类 F1"
         assert all("run_path" not in row for row in response.json()["items"])
 
 
@@ -90,6 +92,7 @@ def test_compare_validates_count_and_returns_run_scoped_metrics(tmp_path):
         assert result.json()["intersection_count"] == 1
         assert result.json()["runs"][0]["model_name"] == "M"
         assert result.json()["runs"][0]["config"] == {}
+        assert result.json()["runs"][0]["summary_metrics"][0]["label"] == "类 F1"
 
 
 def test_explicit_compare_rejects_incompatible_evaluator_or_shared_gold_fingerprint(tmp_path):

@@ -125,6 +125,14 @@ def run_detail_page(request: Request, run_id: str):
         raise HTTPException(status_code=404, detail="Run not found")
     for item in run["items"]:
         item["confirmed_cq_ids"] = json.loads(item["confirmation_json"]) if item["confirmation_json"] else []
+    item_labels = {item["id"]: f"{item['task'].upper()} / {item['domain']}" for item in run["items"]}
+    for stage in run["stages"]:
+        stage["item_label"] = item_labels.get(stage["run_item_id"], "")
+    item_order = {item["id"]: index for index, item in enumerate(run["items"])}
+    stage_order = {name: index for index, name in enumerate(
+        ("evaluate", "class", "property", "triple", "atomic", "axiom", "hierarchy"))}
+    run["stages"].sort(key=lambda stage: (item_order.get(stage["run_item_id"], 99),
+                                          stage_order.get(stage["stage"], 99)))
     with connect_database(request.app.state.settings.database_path) as connection:
         agent = connection.execute("SELECT name FROM agents WHERE id=? AND user_id='local'", (run["agent_id"],)).fetchone()
         model = connection.execute("SELECT name,model_id,provider FROM models WHERE id=? AND user_id='local'", (run["model_id"],)).fetchone()
@@ -162,7 +170,7 @@ def run_detail_page(request: Request, run_id: str):
     return _templates(request).TemplateResponse(request, "run_detail.html", {
         "run": run, "agent": dict(agent) if agent else {"name": "未知 Agent"},
         "model": dict(model) if model else {"name": "未知模型", "model_id": "", "provider": ""},
-        "reports": reports, "config": json.loads(run["config_json"]),
+        "reports": reports, "config": json.loads(run["config_json"]), "item_labels": item_labels,
     })
 
 

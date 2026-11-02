@@ -8,6 +8,10 @@
     draft: "草稿", queued: "排队中", running: "运行中", completed: "已完成", partial: "部分完成", failed: "失败",
     pending: "待处理", blocked: "已阻塞", started: "已开始",
   };
+  const STAGE_LABELS = {
+    evaluate: "评测", class: "类评测", property: "属性评测", triple: "三元组评测",
+    atomic: "原子 TBox 提取", axiom: "公理评测", hierarchy: "层级闭包评测",
+  };
   const DIMENSION_LABELS = {
     term: "词项", class: "类", property: "属性", property_characteristic: "属性特征",
     class_hierarchy: "类层级", property_hierarchy: "属性层级",
@@ -862,6 +866,107 @@
   }
 
   setupRunDetail();
+
+  function setupRunLogs() {
+    const drawer = $("#log-drawer");
+    if (!drawer) return;
+    const scrim = $("#log-scrim");
+    const list = $("#log-events");
+    const status = $("#log-status");
+    const stageFilter = $("#log-stage-filter");
+    const streamFilter = $("#log-stream-filter");
+    const itemLabels = JSON.parse($("#log-item-labels").textContent);
+    let events = [];
+    let opener = null;
+    let timer = null;
+    let loading = false;
+    let previousOverflow = "";
+
+    const parsePayload = (event) => {
+      try { return JSON.parse(event.payload_json || "{}"); }
+      catch (_) { return { text: event.payload_json || "" }; }
+    };
+    const render = () => {
+      const filtered = events.filter((event) => {
+        const payload = parsePayload(event);
+        return (!stageFilter.value || payload.stage === stageFilter.value) &&
+          (!streamFilter.value || (payload.stream || "status") === streamFilter.value) &&
+          (!payload.stream || String(payload.text || "").trim());
+      });
+      const nearBottom = list.childElementCount > 0 && list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+      const oldScrollTop = list.scrollTop;
+      list.replaceChildren();
+      for (const event of filtered) {
+        const payload = parsePayload(event);
+        const row = document.createElement("li");
+        const meta = document.createElement("div"); meta.className = "log-event-meta";
+        const heading = document.createElement("strong");
+        heading.textContent = payload.stage ? label(payload.stage, STAGE_LABELS) : statusLabel(event.event_type);
+        const stream = document.createElement("span");
+        stream.textContent = payload.stream === "stdout" ? "标准输出" : payload.stream === "stderr" ? "错误输出" : "状态变化";
+        const item = document.createElement("span"); item.textContent = itemLabels[payload.item_id] || "";
+        const time = document.createElement("time"); time.textContent = new Date(event.created_at).toLocaleString("zh-CN");
+        meta.append(heading, stream);
+        if (item.textContent) meta.append(item);
+        meta.append(time);
+        const message = document.createElement("pre");
+        message.textContent = String(payload.text || payload.error || payload.reason || statusLabel(payload.status || event.event_type)).trimEnd();
+        row.append(meta, message);
+        list.append(row);
+      }
+      status.textContent = `显示 ${filtered.length} / ${events.length} 条事件`;
+      list.scrollTop = nearBottom ? list.scrollHeight : oldScrollTop;
+    };
+    const refresh = async () => {
+      if (loading || drawer.hidden) return;
+      loading = true;
+      try {
+        events = await request(`/api/runs/${encodeURIComponent(drawer.dataset.runId)}/events`);
+        const selected = stageFilter.value;
+        stageFilter.replaceChildren(new Option("全部阶段", ""));
+        for (const stage of new Set(events.map((event) => parsePayload(event).stage).filter(Boolean))) {
+          stageFilter.add(new Option(label(stage, STAGE_LABELS), stage));
+        }
+        if ([...stageFilter.options].some((option) => option.value === selected)) stageFilter.value = selected;
+        render();
+        if (!["queued", "running"].includes($(".detail-summary")?.dataset.runStatus) && timer) {
+          clearInterval(timer); timer = null;
+        }
+      } catch (error) { status.textContent = `日志加载失败：${error.message}`; }
+      finally { loading = false; }
+    };
+    const close = () => {
+      drawer.hidden = true;
+      scrim.hidden = true;
+      document.body.style.overflow = previousOverflow;
+      if (timer) { clearInterval(timer); timer = null; }
+      const target = opener?.isConnected ? opener : $("[data-open-log-drawer]");
+      target?.focus();
+    };
+    const open = (target) => {
+      opener = target;
+      previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      drawer.hidden = false;
+      scrim.hidden = false;
+      list.scrollTop = 0;
+      $("[data-close-log-drawer]", drawer).focus();
+      status.textContent = "正在加载日志…";
+      refresh();
+      if (["queued", "running"].includes($(".detail-summary")?.dataset.runStatus)) timer = setInterval(refresh, 3000);
+    };
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-open-log-drawer]");
+      if (button) open(button);
+    });
+    $("[data-close-log-drawer]", drawer).addEventListener("click", close);
+    scrim.addEventListener("click", close);
+    document.addEventListener("keydown", (event) => { if (!drawer.hidden) handleDialogKeys(event, drawer, close); });
+    stageFilter.addEventListener("change", render);
+    streamFilter.addEventListener("change", render);
+  }
+
+  setupRunLogs();
 
   async function setupRecords() {
     const body = $("#records-body");

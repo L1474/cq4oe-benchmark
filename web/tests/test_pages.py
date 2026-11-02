@@ -84,7 +84,8 @@ def test_domain_detail_exposes_task_cqs_and_task_bundle_links(tmp_path):
 
 
 def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
-    from web.repositories import add_artifact, create_agent, create_model, create_run, save_metrics
+    from web.repositories import (add_artifact, add_event, create_agent, create_model,
+                                  create_run, save_metrics, save_stage_state)
 
     client = make_page_client(tmp_path)
     app = client.app
@@ -103,6 +104,12 @@ def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
                            config={}, runs_root=app.state.settings.runs_root, initial_status="completed")
                 for _ in range(2)]
         run = runs[0]
+        add_event(app.state.settings.database_path, user_id="local", run_id=run["id"],
+                  event_type="stage", payload={"stage": "class", "text": "example detailed log line"})
+        save_stage_state(app.state.settings.database_path, user_id="local", run_id=run["id"],
+                         run_item_id=run["items"][0]["id"], stage="hierarchy", status="completed")
+        save_stage_state(app.state.settings.database_path, user_id="local", run_id=run["id"],
+                         run_item_id=run["items"][0]["id"], stage="class", status="completed")
         save_metrics(app.state.settings.database_path, user_id="local", run_id=run["id"], metrics=[{
             "run_item_id": run["items"][0]["id"], "dimension": "class", "layer": "aggregated",
             "metric_name": "f1", "scope": "aggregate", "value": 0.555555, "unit": "ratio",
@@ -134,6 +141,15 @@ def test_records_and_compare_pages_render_and_detail_sanitizes_report(tmp_path):
         assert "查看原始英文报告" in detail.text
         assert "0.56" in detail.text
         assert "原始 report.md 由 CQ2Term / CQ2Onto 评测脚本生成" in detail.text
+        assert 'data-open-log-drawer' in detail.text
+        assert 'id="log-drawer"' in detail.text
+        assert 'id="log-stage-filter"' in detail.text
+        assert 'id="log-stream-filter"' in detail.text
+        assert 'class="event-list"' not in detail.text
+        assert "example detailed log line" not in detail.text
+        class_stage = detail.text.index("类评测")
+        hierarchy_stage = detail.text.index("层级闭包评测")
+        assert class_stage < hierarchy_stage
         assert 'href="#report-2-property"' in detail.text
         assert "CQ2ONTO / alpha" in detail.text
         assert '<pre>{}</pre>' in detail.text

@@ -56,7 +56,7 @@ h3 { margin: 0; font-size: 14px; }
 .text-button:hover { color: #034e4b; text-decoration: underline; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
 .data-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.data-table th, .data-table td { border-bottom: 1px solid #e7ecec; padding: 13px 15px; text-align: left; vertical-align: middle; font-size: 13px; }
+.data-table th, .data-table td { border-bottom: 1px solid #e7ecec; padding: 13px 15px; text-align: left; vertical-align: middle; font-size: 13px; overflow-wrap: anywhere; }
 .data-table thead th { background: #f7f9f9; color: var(--muted); font-size: 11px; font-weight: 650; }
 .data-table tr:last-child th, .data-table tr:last-child td { border-bottom: 0; }
 .data-table th:first-child { width: 43%; }
@@ -223,11 +223,19 @@ input[type="file"] { display: block; min-height: 35px; padding: 5px; background:
 .state-completed { color: var(--green); background: var(--green-soft); }
 .state-failed { color: var(--red); background: var(--red-soft); }
 .stage-list { display: grid; }
-.stage-row { display: grid; grid-template-columns: minmax(100px, 1fr) 100px minmax(150px, auto); gap: 12px; border-top: 1px solid #edf0f0; padding: 8px 0; font-size: 12px; }
-.event-list { display: grid; gap: 8px; margin: 14px 0 0; padding-left: 22px; }
-.event-list li { padding-left: 4px; font-size: 11px; }
-.event-list time { margin-right: 10px; color: var(--muted); }
-.event-list pre { max-height: 120px; overflow: auto; margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stage-row { display: grid; grid-template-columns: minmax(100px, 1fr) 100px minmax(150px, auto); align-items: center; gap: 12px; border-top: 1px solid #edf0f0; padding: 8px 0; font-size: 12px; }
+.stage-row small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+.stage-row .state-pill { justify-self: start; }
+.stage-row time { color: var(--muted); font-size: 11px; }
+.log-drawer { position: fixed; z-index: 26; inset: 0 0 0 auto; display: flex; flex-direction: column; width: min(720px, 100vw); overflow: hidden; border-left: 1px solid var(--line); background: #fff; box-shadow: -12px 0 32px rgb(16 36 38 / 12%); }
+#log-scrim { z-index: 25; }
+.log-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; flex: 0 0 auto; border-bottom: 1px solid var(--line); padding: 12px 20px; }
+.log-status { flex: 0 0 auto; margin: 0; padding: 10px 20px; color: var(--muted); font-size: 11px; }
+.log-event-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0; padding: 0 20px 20px; list-style: none; }
+.log-event-list li { border-top: 1px solid #e7ecec; padding: 11px 0; }
+.log-event-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; color: var(--muted); font-size: 11px; }
+.log-event-meta strong { color: var(--ink); font-size: 12px; }
+.log-event-list pre { margin: 7px 0 0; color: #32434b; font-family: ui-monospace, Consolas, monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .report-nav { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 14px; }
 .report-nav a { border-bottom: 1px solid var(--line); padding: 5px 9px; color: var(--blue); font-size: 11px; text-decoration: none; }
 .item-report { border-top: 1px solid var(--line); padding: 16px 0 22px; }
@@ -239,16 +247,17 @@ input[type="file"] { display: block; min-height: 35px; padding: 5px; background:
 .score-summary-grid dd { margin: 0; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .raw-report { border-top: 1px solid var(--line); padding-top: 11px; }
 .raw-report summary { margin-bottom: 11px; color: var(--teal-dark); cursor: pointer; font-size: 12px; font-weight: 650; }
-.markdown-report { line-height: 1.6; overflow-wrap: anywhere; }
-.markdown-report table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.markdown-report th, .markdown-report td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+.markdown-report { max-width: 100%; min-width: 0; overflow-x: auto; line-height: 1.6; overflow-wrap: anywhere; }
+.markdown-report table { width: max-content; min-width: 100%; max-width: none; border-collapse: collapse; table-layout: auto; font-size: 12px; }
+.markdown-report th, .markdown-report td { max-width: 260px; border: 1px solid var(--line); padding: 6px 8px; text-align: left; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .markdown-report th { background: #f4f7f6; }
 .markdown-report pre { overflow: auto; padding: 12px; background: #f4f7f6; }
-.artifact-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
-.artifact-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #edf0f0; padding: 9px 0; }
-.artifact-list li > div { display: grid; gap: 3px; min-width: 0; }
-.artifact-list li strong { overflow-wrap: anywhere; font-size: 12px; }
-.artifact-list li span { color: var(--muted); font-size: 10px; }
+.artifact-list { display: grid; gap: 0; min-width: 0; max-width: 100%; margin: 0; padding: 0; list-style: none; }
+.artifact-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; max-width: 100%; border-top: 1px solid #edf0f0; padding: 9px 0; }
+.artifact-list li > div { display: grid; flex: 1 1 0; gap: 3px; min-width: 0; }
+.artifact-list li .button { flex: 0 0 auto; }
+.artifact-list li strong { overflow-wrap: anywhere; word-break: break-word; font-size: 12px; }
+.artifact-list li span { overflow-wrap: anywhere; word-break: break-word; color: var(--muted); font-size: 10px; }
 .compare-intersection { border-top: 1px solid var(--line); padding-top: 12px; color: var(--muted); font-size: 12px; }
 .compare-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 11px 0 14px; }
 .segmented-control { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
@@ -296,7 +305,9 @@ input[type="file"] { display: block; min-height: 35px; padding: 5px; background:
   .score-summary-grid, .metric-glossary { grid-template-columns: minmax(0, 1fr); }
   .detail-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stage-row { grid-template-columns: minmax(80px, 1fr) 80px; }
-  .stage-row code { grid-column: 1 / -1; }
+  .stage-row time { grid-column: 1 / -1; }
+  .log-drawer { width: 100vw; }
+  .markdown-report th, .markdown-report td { max-width: 190px; }
   .data-table.guide-table { min-width: 0; }
   .guide-table thead { display: none; }
   .guide-table tbody { display: grid; }

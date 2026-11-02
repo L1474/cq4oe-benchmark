@@ -119,14 +119,14 @@ CQ2Term 评估显式类和属性，主要包含类与属性匹配指标、整体
 
 ## 命令行评测
 
-如果不使用 Web 评测台，也可以把预测产物放入对应的 `predictions/` 目录后运行原有脚本：
+如果不使用 Web 评测台，也可以把预测产物放入对应任务的 `01_predictions/` 目录，然后在仓库根目录分别执行：
 
 ```bash
 # CQ2Term
-cd CQ2Term && python scripts/run_all_cq2term.py
+(cd CQ2Term && python scripts/run_all_cq2term.py)
 
-# CQ2Onto：三种生成策略
-cd CQ2Onto && python scripts/run_all_evaluation_agent_4datsets.py
+# CQ2Onto：按 01_predictions/<mode>/<model>/ontology/ 扫描
+(cd CQ2Onto && python scripts/run_all_evaluation_agent_datasets.py)
 ```
 
 评测脚本会读取金标准，执行各个维度，并把结果写入 `03_evaluation_results/` 和 `04_summary/`。

@@ -6,6 +6,7 @@
 /.venv/
 /venv/
 /node_modules/
+/old_version/
 /docs/superpowers/
 **/__pycache__/
 **/*.py[cod]

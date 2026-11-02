@@ -84,6 +84,9 @@
       [/Ontology upload cannot be parsed: /, "无法解析本体上传文件："],
       [/CQ confirmation applies only to CQ2Onto items\./, "CQ 确认只适用于 CQ2Onto 条目。"],
       [/CQ confirmation is incomplete: /, "CQ 确认未完成："],
+      [/CQ review applies only to CQ2Onto items\./, "CQ 清单已阅仅适用于 CQ2Onto 条目。"],
+      [/CQ review requires a non-empty question list\./, "该领域没有可供浏览的 CQ。"],
+      [/requires CQ review confirmation\./, "需要先浏览 CQ 清单并继续。"],
       [/Run is not a draft\./, "运行不是草稿状态。"],
       [/requires an upload\./, "需要先上传文件。"],
       [/requires complete CQ confirmation\./, "需要完成全部 CQ 确认。"],
@@ -396,13 +399,14 @@
     const selectedItems = new Map();
     const files = new Map();
     const uploaded = new Set();
-    const confirmedItems = new Map();
+    const reviewedItems = new Set();
     const details = new Map();
     let activeRun = null;
     let runItems = new Map();
     let ontoQueue = [];
     let ontoIndex = 0;
     let activeConfirmation = null;
+    let reviewPending = false;
     let modelRequest = 0;
     let submissionPending = false;
     let uploadPending = false;
@@ -590,9 +594,10 @@
     const showModal = () => {
       if (modal.hidden) modalOpener = document.activeElement;
       modal.hidden = false;
-      $("#open-checklist").focus();
+      $("#review-list").focus();
     };
     const closeModal = (restoreFocus = true) => {
+      if (reviewPending) return;
       modal.hidden = true;
       if (restoreFocus) {
         $("#prepare-run").disabled = submissionPending || uploadPending;
@@ -609,12 +614,12 @@
     $("#cancel-confirmation").addEventListener("click", closeModal);
     $("#open-checklist").addEventListener("click", (event) => {
       event.preventDefault();
+      if (reviewPending) return;
       if (activeConfirmation) openDrawer(activeConfirmation.item);
     });
 
     async function openDrawer(item) {
       hideNotice(errorNode);
-      hideNotice($("#drawer-error"));
       drawerReturnsToModal = !modal.hidden;
       drawerOpener = document.activeElement;
       if (drawerReturnsToModal) closeModal(false);
@@ -664,87 +669,21 @@
         : "预测产物格式：OWL、RDF/XML、Turtle、N-Triples 或 N3";
       host.append(format);
       const list = document.createElement("ol");
-      list.className = task === "cq2onto" && activeConfirmation?.item.domain === domain ? "cq-checklist" : "cq-list";
+      list.className = "cq-list";
       for (const cq of detail.cqs) {
         const li = document.createElement("li");
-        if (task === "cq2onto" && activeConfirmation?.item.domain === domain) {
-          li.className = "cq-check";
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.value = cq.id;
-          checkbox.checked = activeConfirmation.confirmedIds.has(cq.id);
-          checkbox.addEventListener("change", () => {
-            checkbox.checked ? activeConfirmation.confirmedIds.add(cq.id) : activeConfirmation.confirmedIds.delete(cq.id);
-            activeConfirmation.saved = false;
-            updateConfirmationProgress();
-          });
-          const text = document.createElement("label");
-          const checkboxId = `cq-${domain}-${cq.id}`;
-          checkbox.id = checkboxId;
-          text.htmlFor = checkboxId;
-          const id = document.createElement("code");
-          id.textContent = cq.id;
-          const question = document.createElement("p");
-          question.textContent = cq.question;
-          text.append(id, question);
-          li.append(checkbox, text);
-        } else {
-          const id = document.createElement("code");
-          id.textContent = cq.id;
-          const question = document.createElement("p");
-          question.textContent = cq.question;
-          li.append(id, question);
-        }
+        const id = document.createElement("code");
+        id.textContent = cq.id;
+        const question = document.createElement("p");
+        question.textContent = cq.question;
+        li.append(id, question);
         list.append(li);
       }
       host.append(list);
-      const footer = $(".drawer-footer");
-      const confirmButton = $("#save-confirmation");
-      const isConfirmList = task === "cq2onto" && activeConfirmation?.item.domain === domain;
-      footer.hidden = !isConfirmList;
-      confirmButton.disabled = !allConfirmed(detail.cqs, activeConfirmation?.confirmedIds || new Set());
-      updateConfirmationProgress();
     }
-
-    function allConfirmed(cqs, confirmedIds) {
-      const expectedIds = cqs.map((cq) => cq.id);
-      return expectedIds.length > 0 && expectedIds.every((id) => confirmedIds.has(id)) && confirmedIds.size === expectedIds.length;
-    }
-
-    function updateConfirmationProgress() {
-      const item = activeConfirmation?.item;
-      if (!item) return;
-      const detail = details.get(itemKey(item));
-      const count = activeConfirmation.confirmedIds.size;
-      $("#drawer-progress").textContent = `${count} / ${cqCount(detail)} 个 CQ 已提供`;
-      $("#confirmation-count").textContent = `${count} / ${cqCount(detail)}`;
-      $("#save-confirmation").disabled = !allConfirmed(detail.cqs, activeConfirmation.confirmedIds);
-      $("#accept-confirmation").disabled = !activeConfirmation.saved;
-    }
-
-    $("#save-confirmation").addEventListener("click", async () => {
-      if (!activeConfirmation) return;
-      const { item, runItem } = activeConfirmation;
-      hideNotice($("#drawer-error"));
-      try {
-        await request(`/api/runs/${encodeURIComponent(activeRun.id)}/items/${encodeURIComponent(runItem.id)}/confirmation`, {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ confirmed_ids: [...activeConfirmation.confirmedIds] }),
-        });
-        activeConfirmation.saved = true;
-        confirmedItems.set(itemKey(item), new Set(activeConfirmation.confirmedIds));
-        updateConfirmationProgress();
-        closeDrawer();
-        showModal();
-      } catch (err) {
-        const inlineError = $("#drawer-error");
-        showNotice(inlineError, err.message);
-        inlineError.focus();
-      }
-    });
 
     async function beginConfirmations() {
-      ontoQueue = [...runItems.entries()].filter(([key]) => key.startsWith("cq2onto:"));
+      ontoQueue = [...runItems.entries()].filter(([key]) => key.startsWith("cq2onto:") && !reviewedItems.has(key));
       ontoIndex = 0;
       if (!ontoQueue.length) return uploadAndStart();
       presentConfirmation();
@@ -761,17 +700,46 @@
       const [task, domain] = key.split(":");
       const item = { task, domain };
       const detail = details.get(key);
-      activeConfirmation = { item, runItem, confirmedIds: new Set(confirmedItems.get(key) || []),
-        saved: confirmedItems.has(key) };
-      $("#confirmation-title").textContent = `确认 ${domain.replaceAll("_", " ")} 已提供的 CQ`;
-      updateConfirmationProgress();
+      activeConfirmation = { item, runItem };
+      $("#confirmation-title").textContent = `浏览 ${domain.replaceAll("_", " ")} 的 CQ 清单`;
+      $("#confirmation-count").textContent = String(cqCount(detail));
+      hideNotice($("#confirmation-error"));
+      const host = $("#review-list");
+      const list = document.createElement("ol");
+      list.className = "cq-list";
+      for (const cq of detail.cqs) {
+        const row = document.createElement("li");
+        const id = document.createElement("code"); id.textContent = cq.id;
+        const question = document.createElement("p"); question.textContent = cq.question;
+        row.append(id, question);
+        list.append(row);
+      }
+      host.replaceChildren(list);
+      host.scrollTop = 0;
+      $("#accept-confirmation").disabled = false;
       showModal();
     }
 
-    $("#accept-confirmation").addEventListener("click", () => {
-      if (!activeConfirmation?.saved) return;
-      ontoIndex += 1;
-      presentConfirmation();
+    $("#accept-confirmation").addEventListener("click", async () => {
+      if (!activeConfirmation || reviewPending) return;
+      const { item, runItem } = activeConfirmation;
+      const button = $("#accept-confirmation");
+      reviewPending = true;
+      button.disabled = true;
+      hideNotice($("#confirmation-error"));
+      try {
+        await request(`/api/runs/${encodeURIComponent(activeRun.id)}/items/${encodeURIComponent(runItem.id)}/review`, { method: "PUT" });
+        reviewedItems.add(itemKey(item));
+        reviewPending = false;
+        ontoIndex += 1;
+        presentConfirmation();
+      } catch (err) {
+        reviewPending = false;
+        button.disabled = false;
+        const inlineError = $("#confirmation-error");
+        showNotice(inlineError, err.message);
+        inlineError.focus();
+      }
     });
 
     async function uploadAndStart() {

@@ -3,20 +3,21 @@ async (page) => {
   const check = (condition, message) => { if (!condition) failures.push(message); };
   const answers = Array.from({ length: 35 }, (_, index) => ({ id: `Q${index + 1}`, question: `Competency question ${index + 1}?` }));
   let draftRequests = 0;
-  const draftReleases = [];
   let delayDraft = false;
-  let confirmFails = false;
+  let reviewFails = false;
+  const draftReleases = [];
   const uploadAttempts = new Map();
+  const reviewed = [];
 
   await page.route("**/api/agents", (route) => route.fulfill({ json: [
     { id: "agent-a", name: "Agent A" }, { id: "agent-b", name: "Agent B" },
   ] }));
   await page.route("**/api/agents/agent-a/models", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 180));
-    await route.fulfill({ json: [{ id: "model-a", name: "Model A", model_id: "a", provider: "ollama" }] });
+    await route.fulfill({ json: [{ id: "model-a", name: "Model A" }] });
   });
   await page.route("**/api/agents/agent-b/models", (route) => route.fulfill({ json: [
-    { id: "model-b", name: "Model B", model_id: "b", provider: "ollama" },
+    { id: "model-b", name: "Model B" },
   ] }));
   await page.route("**/api/catalog", (route) => route.fulfill({ json: [
     { slug: "swo", name: "Swo", counts: { cq2onto: 35, cq2term: 26 } },
@@ -33,9 +34,10 @@ async (page) => {
     if (delayDraft) await new Promise((resolve) => { draftReleases.push(resolve); });
     route.fulfill({ json: { id: `run-${draftRequests}`, status: "draft", items: body.items.map((item, index) => ({ id: `item-${index}`, ...item })) }, status: 201 });
   });
-  await page.route("**/api/runs/*/items/*/confirmation", (route) => {
-    if (confirmFails) route.fulfill({ status: 400, json: { detail: "Server rejected confirmation" } });
-    else route.fulfill({ json: { confirmed: true } });
+  await page.route("**/api/runs/*/items/*/review", (route) => {
+    reviewed.push(route.request().url());
+    if (reviewFails) route.fulfill({ status: 400, json: { detail: "Review failed" } });
+    else route.fulfill({ json: { reviewed: true, cq_count: 21 } });
   });
   await page.route("**/api/runs/*/items/*/upload", (route) => {
     const itemId = route.request().url().split("/").at(-2);
@@ -45,7 +47,7 @@ async (page) => {
   });
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("http://127.0.0.1:8766/runs/new");
+  await page.goto("http://127.0.0.1:8000/runs/new");
   await page.waitForSelector("#run-agent option[value='agent-b']", { state: "attached" });
   await page.selectOption("#run-agent", "agent-a");
   await page.selectOption("#run-agent", "agent-b");
@@ -60,131 +62,84 @@ async (page) => {
     await page.waitForSelector(`[data-item-key='cq2onto:${domain}'] [data-item-count]`);
     await page.locator(`[data-item-key='cq2onto:${domain}'] .text-button`).click();
     await page.waitForSelector("#drawer-content .cq-list li:last-child");
+    const count = await page.locator("#drawer-content .cq-list li").count();
+    check(count === (domain === "water" ? 21 : 35), `${domain}: drawer should show every CQ`);
+    check(await page.locator("#drawer-content input[type=checkbox]").count() === 0, `${domain}: drawer should be read only`);
     const measure = await page.evaluate(() => {
       const host = document.querySelector("#drawer-content");
-      const last = host.querySelector("li:last-child");
-      const footer = document.querySelector(".drawer-footer");
       host.scrollTop = host.scrollHeight;
-      return { scrollHeight: host.scrollHeight, clientHeight: host.clientHeight,
-        lastBottom: last.getBoundingClientRect().bottom, footerTop: footer.getBoundingClientRect().top,
-        hostBottom: host.getBoundingClientRect().bottom };
+      return { scrollable: host.scrollHeight > host.clientHeight,
+        lastBottom: host.querySelector("li:last-child").getBoundingClientRect().bottom,
+        viewport: innerHeight };
     });
-    check(measure.scrollHeight > measure.clientHeight && measure.lastBottom <= 800, `${domain}: last CQ should be reachable by scrolling inside drawer`);
+    check(measure.scrollable && measure.lastBottom <= measure.viewport, `${domain}: drawer should scroll to last CQ`);
     await page.keyboard.press("Escape");
     check(await page.locator("#cq-drawer").isHidden(), "Escape should close drawer");
-    if (!(await page.locator("#cq-drawer").isHidden())) await page.locator("#cq-drawer [data-close-drawer]").click();
   }
 
   await page.selectOption("#run-model", "model-b");
-  await page.locator("[data-item-key='cq2onto:swo'] input[type=file]").setInputFiles({ name: "swo.owl", mimeType: "application/rdf+xml", buffer: Buffer.from("<rdf:RDF/>") });
-  await page.locator("[data-item-key='cq2onto:water'] input[type=file]").setInputFiles({ name: "water.owl", mimeType: "application/rdf+xml", buffer: Buffer.from("<rdf:RDF/>") });
+  for (const domain of ["water", "swo"]) {
+    await page.locator(`[data-item-key='cq2onto:${domain}'] input[type=file]`).setInputFiles({
+      name: `${domain}.owl`, mimeType: "application/rdf+xml", buffer: Buffer.from("<rdf:RDF/>"),
+    });
+  }
   delayDraft = true;
   await page.click("#prepare-run");
   await page.waitForTimeout(100);
   await page.locator("#prepare-run").dispatchEvent("click");
-  await page.waitForTimeout(100);
   check(draftRequests === 1, "rapid Prepare clicks should create one draft");
   draftReleases.forEach((release) => release());
   await page.waitForSelector("#confirmation-modal:not([hidden])");
-  check((await page.evaluate(() => document.activeElement?.closest("#confirmation-modal") !== null)), "modal should own initial focus");
+  check(await page.locator("#review-list .cq-list li").count() === 21, "water modal should show all 21 questions");
+  check(await page.locator("#confirmation-modal input[type=checkbox]").count() === 0, "modal should not ask for per-CQ checks");
+  check(await page.locator("#accept-confirmation").isEnabled(), "one action should allow continuing");
+  check(await page.evaluate(() => document.activeElement?.id === "review-list"), "modal should focus readable list");
+
   await page.click("#open-checklist");
   await page.waitForSelector("#cq-drawer:not([hidden])");
-  check((await page.evaluate(() => document.activeElement?.closest("#cq-drawer") !== null)), "drawer should own initial focus");
-  check(await page.locator("#drawer-content input[type=checkbox]").count() === 21, "water should show all 21 CQ checkboxes");
-  const desktopWater = await page.evaluate(() => {
-    const host = document.querySelector("#drawer-content");
-    const last = host.querySelector(".cq-check:last-child");
-    host.scrollTop = host.scrollHeight;
-    return { scrollHeight: host.scrollHeight, clientHeight: host.clientHeight, lastBottom: last.getBoundingClientRect().bottom,
-      footerBottom: document.querySelector(".drawer-footer").getBoundingClientRect().bottom };
-  });
-  check(desktopWater.scrollHeight > desktopWater.clientHeight && desktopWater.lastBottom <= 800, "water desktop: last CQ checkbox should be reachable");
-  check(desktopWater.footerBottom <= 800, "water desktop: confirmation footer should remain reachable");
-  await page.setViewportSize({ width: 390, height: 700 });
-  const mobileWater = await page.evaluate(() => {
-    const host = document.querySelector("#drawer-content");
-    const last = host.querySelector(".cq-check:last-child");
-    host.scrollTop = host.scrollHeight;
-    return { scrollHeight: host.scrollHeight, clientHeight: host.clientHeight,
-      lastBottom: last.getBoundingClientRect().bottom, footerBottom: document.querySelector(".drawer-footer").getBoundingClientRect().bottom,
-      pageWidth: document.documentElement.scrollWidth, viewport: innerWidth };
-  });
-  check(mobileWater.scrollHeight > mobileWater.clientHeight && mobileWater.lastBottom <= 700, "water mobile: last CQ checkbox should be reachable");
-  check(mobileWater.footerBottom <= 700 && mobileWater.pageWidth <= mobileWater.viewport, "water mobile: footer should remain reachable without page overflow");
-  await page.setViewportSize({ width: 1280, height: 800 });
-  const checkbox = page.locator("#drawer-content input[type=checkbox]").first();
-  check(await checkbox.evaluate((node) => node.labels.length > 0 && node.labels[0].textContent.includes(node.value)), "CQ checkbox should have an accessible CQ label");
-  await page.locator("#drawer-content input[type=checkbox]").evaluateAll((nodes) => nodes.forEach((node) => { node.checked = true; node.dispatchEvent(new Event("change", { bubbles: true })); }));
-  confirmFails = true;
-  await page.click("#save-confirmation");
-  await page.waitForTimeout(100);
-  const drawerError = page.locator("#drawer-error");
-  check(await drawerError.isVisible(), "server confirmation error should be visible inside drawer");
-  check((await page.evaluate(() => document.activeElement?.id)) === "drawer-error", "confirmation error should receive focus");
-
-  confirmFails = false;
-  await page.click("#save-confirmation");
-  await page.waitForSelector("#confirmation-modal:not([hidden])");
-  check(await page.locator("#drawer-error").isHidden(), "successful confirmation should clear drawer error on next open");
-  await page.click("#accept-confirmation");
-  await page.waitForSelector("#confirmation-modal:not([hidden])");
-  check((await page.locator("#confirmation-title").textContent()).includes("swo"), "next CQ2Onto item should be SWO");
-  await page.setViewportSize({ width: 390, height: 700 });
-  await page.click("#open-checklist");
-  await page.waitForSelector("#drawer-content input[type=checkbox]");
-  check(await page.locator("#drawer-content input[type=checkbox]").count() === 35, "SWO should show all 35 CQ checkboxes");
-  const desktopSwo = await page.evaluate(() => {
-    const host = document.querySelector("#drawer-content");
-    const last = host.querySelector(".cq-check:last-child");
-    host.scrollTop = host.scrollHeight;
-    return { scrollHeight: host.scrollHeight, clientHeight: host.clientHeight, lastBottom: last.getBoundingClientRect().bottom,
-      footerBottom: document.querySelector(".drawer-footer").getBoundingClientRect().bottom };
-  });
-  check(desktopSwo.scrollHeight > desktopSwo.clientHeight && desktopSwo.lastBottom <= 800, "SWO desktop: last CQ checkbox should be reachable");
-  check(desktopSwo.footerBottom <= 800, "SWO desktop: confirmation footer should remain reachable");
-  const mobile = await page.evaluate(() => {
-    const host = document.querySelector("#drawer-content");
-    const last = host.querySelector(".cq-check:last-child");
-    host.scrollTop = host.scrollHeight;
-    return { scrollHeight: host.scrollHeight, clientHeight: host.clientHeight,
-      lastBottom: last.getBoundingClientRect().bottom,
-      footerBottom: document.querySelector(".drawer-footer").getBoundingClientRect().bottom,
-      pageWidth: document.documentElement.scrollWidth, viewport: innerWidth };
-  });
-  check(mobile.scrollHeight > mobile.clientHeight && mobile.lastBottom <= 700, "SWO mobile: last CQ checkbox should be reachable");
-  check(mobile.footerBottom <= 700 && mobile.pageWidth <= mobile.viewport, "SWO mobile: footer should remain reachable without page overflow");
-  await page.locator("#cq-drawer [data-close-drawer]").focus();
-  await page.keyboard.press("Shift+Tab");
-  check((await page.evaluate(() => document.activeElement?.closest("#cq-drawer") !== null)), "drawer should trap backward Tab");
   await page.keyboard.press("Escape");
   check(await page.locator("#cq-drawer").isHidden(), "Escape should return from drawer to modal");
-  check((await page.evaluate(() => document.activeElement?.id)) === "open-checklist", "drawer should restore focus to modal checklist link");
-  await page.keyboard.press("Shift+Tab");
-  check((await page.evaluate(() => document.activeElement?.closest("#confirmation-modal") !== null)), "modal should trap backward Tab");
-  await page.click("#open-checklist");
-  await page.locator("#drawer-content input[type=checkbox]").evaluateAll((nodes) => nodes.forEach((node) => { node.checked = true; node.dispatchEvent(new Event("change", { bubbles: true })); }));
-  await page.click("#save-confirmation");
+  check(await page.evaluate(() => document.activeElement?.id === "open-checklist"), "drawer should restore focus to modal link");
+
+  reviewFails = true;
+  await page.click("#accept-confirmation");
+  await page.waitForSelector("#confirmation-error:not([hidden])");
+  check(await page.locator("#confirmation-modal").isVisible(), "review failure should keep modal open");
+  check(await page.evaluate(() => document.activeElement?.id === "confirmation-error"), "review error should receive focus");
+  reviewFails = false;
+  await page.click("#accept-confirmation");
+  await page.waitForFunction(() => document.querySelector("#confirmation-title")?.textContent.includes("swo"));
+  check(await page.locator("#review-list .cq-list li").count() === 35, "SWO modal should show all 35 questions");
+
+  await page.setViewportSize({ width: 390, height: 700 });
+  const mobile = await page.evaluate(() => {
+    const host = document.querySelector("#review-list");
+    host.scrollTop = host.scrollHeight;
+    return { scrollable: host.scrollHeight > host.clientHeight,
+      lastBottom: host.querySelector("li:last-child").getBoundingClientRect().bottom,
+      pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
+      panelBottom: document.querySelector(".review-panel").getBoundingClientRect().bottom };
+  });
+  check(mobile.scrollable && mobile.lastBottom <= 700, "mobile review list should scroll to final CQ");
+  check(mobile.pageWidth <= mobile.viewportWidth && mobile.panelBottom <= 700, "mobile modal should fit viewport");
   await page.click("#close-confirmation");
   await page.click("#prepare-run");
-  await page.waitForTimeout(100);
-  check(await page.locator("#confirmation-modal").isVisible(), "re-Prepare should reopen saved confirmation after modal close");
-  check(await page.locator("#accept-confirmation").isEnabled(), "saved confirmation should remain ready to accept");
-  await page.click("#accept-confirmation");
   await page.waitForSelector("#confirmation-modal:not([hidden])");
-  check((await page.locator("#confirmation-title").textContent()).includes("swo"), "retry should also present final saved confirmation");
+  check((await page.locator("#confirmation-title").textContent()).includes("swo"), "retry should skip already reviewed water");
   await page.click("#accept-confirmation");
   await page.waitForSelector("#run-error:not([hidden])");
-  check(await page.locator("#confirmation-modal").isHidden(), "completed confirmations should close modal");
+  check(await page.locator("#confirmation-modal").isHidden(), "reviewed items should proceed to upload");
   check(uploadAttempts.get("item-0") === 1 && uploadAttempts.get("item-1") === 1, "first upload pass should reach both items");
-  await page.locator("[data-item-key='cq2onto:water'] input[type=file]").setInputFiles({ name: "water-replacement.owl", mimeType: "application/rdf+xml", buffer: Buffer.from("<rdf:RDF replacement='true'/>") });
+  await page.locator("[data-item-key='cq2onto:water'] input[type=file]").setInputFiles({
+    name: "water-replacement.owl", mimeType: "application/rdf+xml", buffer: Buffer.from("<rdf:RDF replacement='true'/>"),
+  });
   await page.click("#prepare-run");
-  await page.waitForSelector("#confirmation-modal:not([hidden])");
-  await page.click("#accept-confirmation");
-  await page.click("#accept-confirmation");
   await page.waitForSelector("#run-error:not([hidden])");
-  check(uploadAttempts.get("item-0") === 2, "replacement file should upload again on retry");
+  check(await page.locator("#confirmation-modal").isHidden(), "upload retry should not repeat completed CQ review");
+  check(uploadAttempts.get("item-0") === 2, "replacement file should upload again");
   check(draftRequests === 1, "upload retry should reuse original draft");
+  check(reviewed.length === 3, "each item should need only one successful review action");
 
   if (failures.length) throw Error(failures.join("\n"));
-  return "interaction checks passed";
+  return "read-only CQ review checks passed";
 }

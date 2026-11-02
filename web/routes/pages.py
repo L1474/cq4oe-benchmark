@@ -129,7 +129,10 @@ def run_detail_page(request: Request, run_id: str):
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     for item in run["items"]:
-        item["confirmed_cq_ids"] = json.loads(item["confirmation_json"]) if item["confirmation_json"] else []
+        review = json.loads(item["confirmation_json"]) if item["confirmation_json"] else None
+        reviewed_ids = review.get("cq_ids", []) if isinstance(review, dict) else review or []
+        item["cq_reviewed"] = review.get("reviewed") is True if isinstance(review, dict) else bool(review)
+        item["reviewed_cq_count"] = len(reviewed_ids)
     item_labels = {item["id"]: f"{item['task'].upper()} / {item['domain']}" for item in run["items"]}
     for stage in run["stages"]:
         stage["item_label"] = item_labels.get(stage["run_item_id"], "")

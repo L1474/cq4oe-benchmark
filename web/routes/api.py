@@ -109,7 +109,14 @@ def _public_run(run):
         item.pop("input_path", None)
         confirmation = item.pop("confirmation_json", None)
         if confirmation:
-            item["confirmed_cq_ids"] = json.loads(confirmation)
+            review = json.loads(confirmation)
+            if isinstance(review, dict):
+                item["cq_reviewed"] = review.get("reviewed") is True
+                item["reviewed_cq_count"] = len(review.get("cq_ids") or [])
+            else:
+                item["confirmed_cq_ids"] = review
+                item["cq_reviewed"] = True
+                item["reviewed_cq_count"] = len(review)
     for artifact in result.get("artifacts", []):
         for key in ("relative_path", "run_path", "user_id"):
             artifact.pop(key, None)
@@ -267,6 +274,15 @@ def confirm_item(request: Request, run_id: str, item_id: str, body: Confirmation
     except RunServiceError as exc:
         raise HTTPException(400, str(exc))
     return {"confirmed": True}
+
+
+@api_router.put("/runs/{run_id}/items/{item_id}/review")
+def review_item_cqs(request: Request, run_id: str, item_id: str):
+    try:
+        cq_count = _state(request).run_service.acknowledge_cq_review(run_id, item_id)
+    except RunServiceError as exc:
+        raise HTTPException(400, str(exc))
+    return {"reviewed": True, "cq_count": cq_count}
 
 
 @api_router.post("/runs/{run_id}/items/{item_id}/upload", status_code=201)

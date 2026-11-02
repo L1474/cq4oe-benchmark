@@ -132,6 +132,23 @@ def test_upload_errors_are_json_and_run_events_are_available(tmp_path):
         assert client.get(f"/api/runs/{run['id']}/events").status_code == 200
 
 
+def test_cq2onto_review_endpoint_records_snapshot_without_cq_checkboxes(tmp_path):
+    client, app = make_client(tmp_path)
+    with client:
+        agent = client.post("/api/agents", json={"name": "Agent"}).json()
+        model = client.post(f"/api/agents/{agent['id']}/models", json={"name": "Model"}).json()
+        run = client.post("/api/runs", json={"agent_id": agent["id"], "model_id": model["id"],
+                                           "items": [{"task": "cq2onto", "domain": "alpha"}]}).json()
+        item_id = run["items"][0]["id"]
+        response = client.put(f"/api/runs/{run['id']}/items/{item_id}/review")
+        assert response.status_code == 200
+        assert response.json() == {"reviewed": True, "cq_count": 1}
+        detail = client.get(f"/api/runs/{run['id']}").json()
+        assert detail["items"][0]["cq_reviewed"] is True
+        assert detail["items"][0]["reviewed_cq_count"] == 1
+        assert "confirmed_cq_ids" not in detail["items"][0]
+
+
 def test_failure_events_do_not_expose_workspace_paths(tmp_path):
     client, app = make_client(tmp_path)
     with client:

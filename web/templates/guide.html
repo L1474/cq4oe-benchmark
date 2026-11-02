@@ -29,7 +29,7 @@ cqbycq/你的模型/log/wine_log.txt            ← 生成日志，可留在本�
   <div><h2>按任务 / 领域逐项上传</h2><p>在<a href="/runs/new">运行页</a>选择 Agent 和模型标签，添加任务 / 领域。每添加一个条目，就上传该条目的一个预测文件；一次运行可以包含多个条目。</p>
     <div class="table-wrap"><table class="data-table guide-table"><thead><tr><th>任务</th><th>上传文件</th><th>检查规则</th></tr></thead><tbody>
       <tr><td>CQ2Term</td><td>一个 <code>.json</code></td><td>必须覆盖该领域全部 CQ ID，不得重复；每行都有字符串数组 <code>class</code> 和 <code>property</code>。</td></tr>
-      <tr><td>CQ2Onto</td><td>一个 <code>.owl/.rdf/.xml/.ttl/.nt/.n3</code></td><td><code>.owl/.rdf/.xml</code> 使用 RDF/XML；上传前确认该领域全部 CQ 已提供给 Agent。</td></tr>
+      <tr><td>CQ2Onto</td><td>一个 <code>.owl/.rdf/.xml/.ttl/.nt/.n3</code></td><td><code>.owl/.rdf/.xml</code> 使用 RDF/XML；运行前浏览完整 CQ 清单，点一次“已阅，继续”。</td></tr>
     </tbody></table></div>
     <p>上传的是最终预测产物。CQ 包、外部生成日志、生成代码、金标准和 <code>report.md</code> 都不用上传；评测日志、指标和报告由评测台生成。单个上传文件上限为 50 MB。</p>
   </div>

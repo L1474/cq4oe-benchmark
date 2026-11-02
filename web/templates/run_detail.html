@@ -10,8 +10,8 @@
   <div><dt>Agent</dt><dd>{{ agent.name }}</dd></div><div><dt>模型标签</dt><dd>{{ model.name }}</dd></div>
   <div><dt>创建时间</dt><dd>{{ run.created_at }}</dd></div><div><dt>评测器版本</dt><dd><code>{{ run.evaluator_version }}</code></dd></div><div><dt>金标准指纹</dt><dd><code>{{ run.gold_fingerprint }}</code></dd></div></dl>
 </section>
-<section class="detail-section"><h2>运行输入</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>任务</th><th>领域</th><th>条目状态</th><th>CQ 确认数</th><th>评测包版本</th></tr></thead><tbody>
-{% for item in run["items"] %}<tr><td>{{ item.task|task_label }}</td><td>{{ item.domain }}</td><td>{{ item.status|status_label }}</td><td>{% if item.confirmed_cq_ids %}{{ item.confirmed_cq_ids|length }} 个已确认{% else %}—{% endif %}</td><td><code>{{ item.bundle_sha256 or "—" }}</code></td></tr>{% endfor %}
+<section class="detail-section"><h2>运行输入</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>任务</th><th>领域</th><th>条目状态</th><th>CQ 清单</th><th>评测包版本</th></tr></thead><tbody>
+{% for item in run["items"] %}<tr><td>{{ item.task|task_label }}</td><td>{{ item.domain }}</td><td>{{ item.status|status_label }}</td><td>{% if item.cq_reviewed %}已阅（{{ item.reviewed_cq_count }} 题）{% else %}—{% endif %}</td><td><code>{{ item.bundle_sha256 or "—" }}</code></td></tr>{% endfor %}
 </tbody></table></div>
 <details class="config-details"><summary>评测配置</summary><pre>{{ config|tojson(indent=2) }}</pre></details></section>
 <section class="detail-section"><div class="section-heading"><h2>指标</h2><a class="text-button" href="/evaluation-guide">评测方法与指标 →</a></div><div class="table-scroll"><table class="data-table metric-table"><thead><tr><th>任务</th><th>领域</th><th>维度</th><th>层级</th><th>指标</th><th>统计范围</th><th>数值</th></tr></thead><tbody>

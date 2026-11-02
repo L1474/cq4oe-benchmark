@@ -34,15 +34,16 @@
   <div class="drawer-header"><div><p class="eyebrow" id="drawer-domain"></p><h2 id="drawer-title">CQ 清单</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭 CQ 清单">×</button></div>
   <div class="drawer-tabs" id="drawer-tabs" role="tablist" aria-label="任务"></div>
   <div id="drawer-content"></div>
-  <div id="drawer-error" class="notice error drawer-error" role="alert" tabindex="-1" hidden></div>
-  <div class="drawer-footer"><span class="muted" id="drawer-progress"></span><button class="button primary" id="save-confirmation" type="button" disabled>确认已提供的 CQ</button></div>
 </aside>
 <section class="modal-backdrop" id="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" hidden>
-  <div class="modal-panel">
-    <div class="modal-heading"><div><p class="eyebrow">CQ2Onto 提交确认</p><h2 id="confirmation-title">确认已提供的问题</h2></div><button class="icon-button" type="button" id="close-confirmation" aria-label="关闭确认框">×</button></div>
-    <p class="confirmation-count"><strong id="confirmation-count">0 / 0</strong><span>个 CQ 已提供给 Agent</span></p>
-    <p class="confirmation-help"><a href="#cq-drawer" id="open-checklist">打开 CQ 清单 →</a></p>
-    <div class="form-actions"><button class="button" type="button" id="cancel-confirmation">取消</button><button class="button primary" type="button" id="accept-confirmation" disabled>继续</button></div>
+  <div class="modal-panel review-panel">
+    <div class="modal-heading"><div><p class="eyebrow">CQ2Onto 运行前检查</p><h2 id="confirmation-title">浏览 CQ 清单</h2></div><button class="icon-button" type="button" id="close-confirmation" aria-label="关闭确认框">×</button></div>
+    <p class="confirmation-count"><strong id="confirmation-count">0</strong><span>个 CQ</span></p>
+    <p class="review-note">请扫一眼本领域的全部问题，确认上传的是针对这组问题生成的最终本体。无需逐题勾选。</p>
+    <div class="review-list" id="review-list" tabindex="0" aria-label="本领域 CQ 清单"></div>
+    <p class="confirmation-help"><a href="#cq-drawer" id="open-checklist">在抽屉中查看 →</a></p>
+    <div id="confirmation-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+    <div class="form-actions"><button class="button" type="button" id="cancel-confirmation">取消</button><button class="button primary" type="button" id="accept-confirmation" disabled>已阅，继续</button></div>
   </div>
 </section>
 <script id="domain-index" type="application/json">{{ domains|tojson }}</script>

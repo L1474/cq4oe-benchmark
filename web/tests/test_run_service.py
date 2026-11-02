@@ -81,6 +81,21 @@ def test_cq2onto_requires_complete_confirmation_and_upload(tmp_path):
     assert len(stored["bundle_sha256"]) == 64
 
 
+def test_cq2onto_review_acknowledgement_requires_one_action_not_per_cq_ids(tmp_path):
+    service, db, agent, model, _ = setup_service(tmp_path)
+    run_id = service.create_draft_run("local", agent["id"], model["id"], [{"task": "cq2onto", "domain": "alpha"}], {})
+    item = get_run(db, user_id="local", run_id=run_id)["items"][0]
+    service.save_item_upload(run_id, item["id"], upload("model.owl", b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>'))
+
+    with pytest.raises(RunServiceError, match="review"):
+        service.start_run(run_id)
+    service.acknowledge_cq_review(run_id, item["id"])
+    service.start_run(run_id)
+
+    stored = get_run(db, user_id="local", run_id=run_id)["items"][0]
+    assert json.loads(stored["confirmation_json"]) == {"reviewed": True, "cq_ids": ["OCQ1"]}
+
+
 def test_multi_item_run_requires_every_upload_and_snapshots_are_isolated(tmp_path):
     service, db, agent, model, runs_root = setup_service(tmp_path)
     items = [{"task": "cq2term", "domain": "alpha"}, {"task": "cq2onto", "domain": "alpha"}]

@@ -53,6 +53,8 @@ def test_run_form_uses_task_domain_controls_and_task_specific_counts(tmp_path):
         assert 'class="domain-selection"' not in page
         assert 'id="accept-confirmation" disabled' in page
         assert 'id="open-checklist"' in page
+        assert 'id="save-confirmation"' not in page
+        assert 'type="checkbox"' not in page
         assert "每个任务 / 领域上传一个文件" in page
         assert 'href="/guide"' in page
 

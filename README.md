@@ -40,7 +40,7 @@ docker compose logs -f app ollama
 1. 在 **Agent 管理** 页面创建 Agent，并为它添加一个或多个模型名称标签。它们只用于标记被评估的提交；评测台不会调用这些模型。
 2. 在 **新建运行** 页面选择 Agent、模型和一个或多个“任务 / 领域”条目。打开领域详情可以查看完整 CQ 清单，也可以下载领域专属 CQ 包。
 3. 在评测台外运行你的 Agent。CQ 包包含 `cqs.json`、带版本和完整 CQ ID 的 `manifest.json`、README，以及 CQ2Term 的 `prediction_template.json`；包内不包含金标准答案。
-4. 每个任务 / 领域上传一个最终预测文件：CQ2Term 上传填写完整的 UTF-8 `prediction_template.json`；CQ2Onto 上传该领域合并后的 `.owl`、`.rdf`、`.xml`、`.ttl`、`.nt` 或 `.n3` 本体。`normal`、`cqbycq`、`agent` 是生成方式，不是三种上传文件；生成日志不参与评分。CQ2Onto 需要在上传前确认 Agent 已获得清单中的全部 CQ。
+4. 每个任务 / 领域上传一个最终预测文件：CQ2Term 上传填写完整的 UTF-8 `prediction_template.json`；CQ2Onto 上传该领域合并后的 `.owl`、`.rdf`、`.xml`、`.ttl`、`.nt` 或 `.n3` 本体。`normal`、`cqbycq`、`agent` 是生成方式，不是三种上传文件；生成日志不参与评分。CQ2Onto 运行前会展示该领域完整 CQ 清单，浏览后点一次“已阅，继续”，无需逐题勾选。
 5. 点击“准备运行”。评测台会为本次 run 建立独立目录，保存输入快照、阶段日志、`report.md`、指标和评测脚本生成的 JSON/CSV/TXT/XLSX/Atomic TBox 等产物。
 6. 在 **运行记录** 中筛选 Agent、模型、任务、领域、状态和日期。列表默认显示与上一条可比记录的指标趋势，可关闭趋势；选择 2～4 条记录后可以进入对比页查看共同条目和指标变化。
 

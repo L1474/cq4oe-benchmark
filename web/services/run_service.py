@@ -183,6 +183,17 @@ class RunService:
         update_run_item(self.db_path, user_id=run["user_id"], run_id=run_id, item_id=item_id,
                         confirmation_json=json.dumps(confirmed_ids, ensure_ascii=False))
 
+    def acknowledge_cq_review(self, run_id: str, item_id: str) -> int:
+        run, item = self._item(run_id, item_id)
+        if item["task"] != "cq2onto":
+            raise RunServiceError("CQ review applies only to CQ2Onto items.")
+        cq_ids = [cq["id"] for cq in _load_cqs(_cq_file(self.project_root, "cq2onto", item["domain"]))]
+        if not cq_ids:
+            raise RunServiceError("CQ review requires a non-empty question list.")
+        update_run_item(self.db_path, user_id=run["user_id"], run_id=run_id, item_id=item_id,
+                        confirmation_json=json.dumps({"reviewed": True, "cq_ids": cq_ids}, ensure_ascii=False))
+        return len(cq_ids)
+
     def start_run(self, run_id: str) -> None:
         run = get_run(self.db_path, user_id="local", run_id=run_id)
         if not run:
@@ -207,8 +218,15 @@ class RunService:
                             raise RunServiceError("CQ2Term upload is not valid JSON.") from exc
                     else:
                         if not item["confirmation_json"]:
-                            raise RunServiceError(f"Run item {item['id']} requires complete CQ confirmation.")
-                        valid = validate_cq2onto_confirmation(self.project_root, item["domain"], json.loads(item["confirmation_json"]))
+                            raise RunServiceError(f"Run item {item['id']} requires CQ review confirmation.")
+                        review = json.loads(item["confirmation_json"])
+                        if isinstance(review, dict):
+                            if review.get("reviewed") is not True:
+                                raise RunServiceError(f"Run item {item['id']} requires CQ review confirmation.")
+                            reviewed_ids = review.get("cq_ids")
+                        else:
+                            reviewed_ids = review
+                        valid = validate_cq2onto_confirmation(self.project_root, item["domain"], reviewed_ids)
                         try:
                             from rdflib import Graph
                             Graph().parse(source=input_path)

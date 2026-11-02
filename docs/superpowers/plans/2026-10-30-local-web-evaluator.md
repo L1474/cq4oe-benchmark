@@ -39,7 +39,7 @@ CQ 包包含：
 - `README.txt`：输入格式说明。
 - CQ2Term 专用的 `prediction_template.json`。
 
-CQ2Term 必须校验 JSON、完整且不重复的 CQ ID、`class` / `property` 字符串数组。CQ2Onto 在上传前必须完成逐题确认。
+CQ2Term 必须校验 JSON、完整且不重复的 CQ ID、`class` / `property` 字符串数组。CQ2Onto 在运行前展示只读 CQ 清单，用户一次确认已阅后即可继续；服务端记录清单快照。
 
 ### 任务 2：SQLite 和产物存储
 

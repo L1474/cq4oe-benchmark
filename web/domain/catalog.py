@@ -113,7 +113,7 @@ def get_domain_detail(project_root: Path, domain: str) -> dict:
             "input_requirements": (
                 {"class": "List of class term strings", "property": "List of property term strings"}
                 if task == "cq2term"
-                else {"confirmation": "Confirm that every CQ was provided to the Agent"}
+                else {"review": "Review the complete CQ list before starting the run"}
             ),
         }
     return {"slug": domain, "name": domain.replace("_", " ").title(), "tasks": tasks}

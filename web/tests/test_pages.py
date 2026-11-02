@@ -77,15 +77,18 @@ def test_evaluation_guide_has_task_and_dimension_tabs(tmp_path):
         page = client.get("/evaluation-guide").text
         assert 'id="guide-tab-cq2term"' in page
         assert 'id="guide-tab-cq2onto"' in page
-        for tab in ("alignment", "characteristics", "triple", "axiom", "hierarchy", "coverage"):
+        for tab in ("methods", "alignment", "characteristics", "triple", "axiom", "hierarchy", "coverage", "report"):
             assert f'id="onto-tab-{tab}"' in page
         assert "不会把答在别的 CQ 下的词项算作本题覆盖" in page
-        assert "语义候选（第 2 层）" in page
-        assert "全局（第 4 层）" in page
-        assert "只在已匹配属性对上统计" in page
+        assert "Layer 2 · 语义候选" in page
+        assert "Layer 4 · 全局范围" in page
+        assert "只统计已对齐属性对" in page
         assert "不是 Web 把一组分数机械填进固定表格" in page
         assert "mismatch" in page
         assert "HermiT" in page
+        assert "03 domain / range 三元组" in page
+        assert "严格未命中但闭包能够证明" in page
+        assert "Property-Axiom (Triple)" in page
 
 
 def test_domain_detail_exposes_task_cqs_and_task_bundle_links(tmp_path):

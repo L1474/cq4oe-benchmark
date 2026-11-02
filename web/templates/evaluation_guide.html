@@ -14,6 +14,7 @@
   <section id="guide-panel-overview" class="guide-tab-panel" role="tabpanel" aria-labelledby="guide-tab-overview" data-guide-panel="overview">
     <section class="guide-band">
       <h2>一次评测怎么进行</h2>
+      <p>CQ 是“本体应能回答什么”的能力问题。CQ2Term 的金标准是每题显式提到的类和属性；CQ2Onto 的金标准是按 CQ 保留的本体片段和必要 TBox 公理，还包含回答问题所需的隐式或派生词项。两项任务的金标准对象不同，分数不能混成一个总分。</p>
       <ol class="evaluation-steps">
         <li><strong>对齐输入。</strong> Web 根据任务和领域读取仓库中的 CQ 与金标准；上传文件只提供预测结果。</li>
         <li><strong>准备词项对齐。</strong> CQ2Term 对类、属性词项建立一对一映射；CQ2Onto 先对齐本体中的类和属性，下游结构评测复用这份映射。</li>
@@ -32,10 +33,12 @@
         <div><dt>F1</dt><dd>精确率与召回率的调和平均。名称相同不代表统计范围相同，必须同时看任务、维度、层级和范围。</dd></div>
       </dl>
       <p class="guide-note">网页中的比例分数用 0～1 表示并显示两位小数；原始 JSON、CSV 和数据库保留计算精度。分母为 0 时指标可能为空，不应当作 0 分。</p>
+      <p><strong>同一名称，不同问题：</strong>“类 F1”检查词汇对齐，“三元组 F1”检查 domain/range，“公理 F1”检查逻辑结构，“层级 F1”检查推理闭包。阅读数值时至少带上任务、维度、层级和统计范围；只比较两个孤立的 F1 数字没有意义。</p>
     </section>
     <section class="guide-band">
       <h2>原始报告为什么有时多、有时少</h2>
       <p>报告模板由 CQ2Term / CQ2Onto 原评测脚本生成，数值和样例取自本次预测。主要评测步骤固定，但误报、漏报、错配、未对齐项等明细会按结果出现或省略；它不是 Web 把一组分数机械填进固定表格。报告正文目前保持脚本原有英文，运行详情额外提供中文指标摘要。</p>
+      <p>先看统计范围，再看 Precision、Recall、F1。出现空值（报告中常写作 <code>—</code> 或 <code>N/A</code>）时，先检查该列是否有可比较的项；不要直接把空值理解成零分。网页用两位小数便于扫读，核对边界情况时以下载的原始 JSON/CSV 和报告为准。</p>
     </section>
   </section>
 
@@ -48,15 +51,17 @@
     </div>
     <section id="term-panel-alignment" class="guide-tab-panel" role="tabpanel" aria-labelledby="term-tab-alignment" data-guide-panel="term-alignment">
       <section class="guide-band"><h2>1. 词项匹配与对齐</h2>
-        <p>类和属性分别比较。脚本计算硬匹配、序列匹配、Levenshtein、Jaro-Winkler 和语义相似度。单项方法分数用于诊断候选词是否相似；它们不是最终总分。</p>
-        <p>最终映射将每个候选词对的 Top-N 方法分数取平均，低于阈值的候选被丢弃，再做一对一匹配。默认 Top-N 为 3，最终阈值为 0.6。这个映射用于判断不同写法是否表达同一金标准词项。</p>
-        <p class="guide-note">语义相似度表示词项文本/嵌入的接近程度，不等于本体结构正确，也不应单独当作任务得分。</p>
+        <p>输入是每道 CQ 的预测类/属性列表和该任务的显式词项金标准。脚本先分别收集类与属性的唯一词项，再为金标准词项与预测词项的候选配对计算硬匹配、序列相似度、Levenshtein、Jaro-Winkler 和 embedding 语义相似度。</p>
+        <p>硬匹配命中直接给候选对 1.0；否则对非硬匹配方法取最高的 N 个分数求平均。低于最终阈值的候选被丢弃，剩余候选按分数贪心选择，且一个金标准词项和一个预测词项最多各参与一次。默认 N=3、CQ2Term 最终阈值=0.6。</p>
+        <p>原报告的 <code>Step 2 — Per-Method Matching Results</code> 是各方法独立跑出的诊断分数；<code>Step 3 — Best Matching Selection</code> 才是最终映射。查看 <code>class_alignment.csv</code>、<code>property_alignment.csv</code> 和 <code>*_best_matching.csv</code> 可追踪候选为何被接受或拒绝。</p>
+        <p class="guide-note">相似不等于回答正确：最终映射只解决“两个名字是否可视为同一词项”，是否在正确的 CQ 中出现还要看逐题覆盖。</p>
       </section>
     </section>
     <section id="term-panel-score" class="guide-tab-panel" role="tabpanel" aria-labelledby="term-tab-score" data-guide-panel="term-score" hidden>
       <section class="guide-band"><h2>2. 全领域词项 Precision / Recall / F1</h2>
         <p>把整个领域所有 CQ 的唯一类和属性分别汇总后评分。类别结果可以分开看，也可以看“类与属性合并”的综合结果；记录页摘要展示综合分数。</p>
         <p><strong>它不检查词项放在哪一道题下。</strong>只要预测词项在领域其他 CQ 出现，仍可能被全领域词项分数计为覆盖。因此它回答的是“词汇集合认得对不对”，不是“逐题理解对不对”。</p>
+        <p>金标准词项有被对齐的预测词项算 TP；没有算 FN；预测词项不能反向对应任何金标准词项算 FP。由此计算 Precision、Recall、F1。原报告的 <code>Step 4 — Term-level Metrics</code> 给出仅类、仅属性和合并词项三行，后面还列出漏项与额外词项。</p>
       </section>
     </section>
     <section id="term-panel-coverage" class="guide-tab-panel" role="tabpanel" aria-labelledby="term-tab-coverage" data-guide-panel="term-coverage" hidden>
@@ -69,37 +74,135 @@
           <div><dt>完全覆盖</dt><dd>本题所有金标准类和属性都覆盖的 CQ 占全部 CQ 的比例。</dd></div>
         </dl>
         <p class="guide-note">全领域 F1 高、平均 CQ 覆盖低，通常表示词汇基本找对了，但有些词放错了问题，或漏掉了个别问题所需词项。</p>
+        <p>原报告的 <code>Step 5 — CQ Coverage</code> 同时列出至少一项、逐题平均和完全覆盖。逐题表会列出每题缺失的类和属性；它比单个综合 F1 更适合定位是哪道 CQ 出了问题。</p>
       </section>
     </section>
   </section>
 
   <section id="guide-panel-cq2onto" class="guide-tab-panel" role="tabpanel" aria-labelledby="guide-tab-cq2onto" data-guide-panel="cq2onto" hidden>
-    <p class="guide-lead">问题：生成的本体是否包含金标准要求的词项、关系、公理和层级？CQ2Onto 按维度报告，不把这些内容合成一个总分。</p>
+    <p class="guide-lead">问题：由一组 CQ 生成的本体，是否包含回答它们所需的词项、属性语义、domain/range、公理与可推出的层级？CQ2Onto 不是一项分数，而是按依赖顺序运行的多维评测。</p>
+    <section class="guide-band guide-pipeline"><h2>先看执行主干</h2>
+      <ol class="pipeline-steps">
+        <li><span>01</span><div><strong>类对齐</strong><p>从预测和金标准本体抽类，得到一对一类映射与类 F1。输出 <code>class_best_matching.csv</code>。</p></div></li>
+        <li><span>02</span><div><strong>属性对齐与属性特征</strong><p>分别对齐对象属性、数据属性，得到属性映射和属性 F1；在此基础上检查七种 OWL 属性特征。输出 <code>property_best_matching.csv</code>。</p></div></li>
+        <li><span>03</span><div><strong>三元组结构</strong><p>复用类与属性映射，比较 <code>rdfs:domain</code> / <code>rdfs:range</code>；分语义诊断、已对齐严格比较和全局比较。</p></div></li>
+        <li><span>04</span><div><strong>Atomic TBox 抽取</strong><p>把预测本体拆成可比较的原子 TBox 公理。这是中间产物，本身没有一个“Atomic 分数”。</p></div></li>
+        <li><span>05</span><div><strong>公理与严格 CQ 覆盖</strong><p>用映射比较公理结构并标记 TP / FP / FN / mismatch / skip；再按每个 CQ 关联的金标准公理计算严格覆盖。</p></div></li>
+        <li><span>06</span><div><strong>HermiT 闭包与 CQ 补救</strong><p>推理金标准和预测本体中的类/属性层级关系，计算层级分数；对可被推理补足的 CQ 公理进行闭包补救分析。</p></div></li>
+      </ol>
+      <p class="guide-note">后续结构评测依赖前两步的映射。类或属性映射出错，三元组、公理和层级可能连带变差。排查时应沿 01 → 06 的顺序看，不要先盯最后一个 F1。</p>
+    </section>
     <div class="guide-tabs guide-subtabs onto-tabs" role="tablist" aria-label="CQ2Onto 评测维度">
-      <button type="button" role="tab" id="onto-tab-alignment" aria-controls="onto-panel-alignment" aria-selected="true" tabindex="0" data-guide-tab="onto-alignment">类与属性</button>
+      <button type="button" role="tab" id="onto-tab-methods" aria-controls="onto-panel-methods" aria-selected="true" tabindex="0" data-guide-tab="onto-methods">匹配方法</button>
+      <button type="button" role="tab" id="onto-tab-alignment" aria-controls="onto-panel-alignment" aria-selected="false" tabindex="-1" data-guide-tab="onto-alignment">类与属性</button>
       <button type="button" role="tab" id="onto-tab-characteristics" aria-controls="onto-panel-characteristics" aria-selected="false" tabindex="-1" data-guide-tab="onto-characteristics">属性特征</button>
       <button type="button" role="tab" id="onto-tab-triple" aria-controls="onto-panel-triple" aria-selected="false" tabindex="-1" data-guide-tab="onto-triple">三元组</button>
       <button type="button" role="tab" id="onto-tab-axiom" aria-controls="onto-panel-axiom" aria-selected="false" tabindex="-1" data-guide-tab="onto-axiom">公理</button>
       <button type="button" role="tab" id="onto-tab-hierarchy" aria-controls="onto-panel-hierarchy" aria-selected="false" tabindex="-1" data-guide-tab="onto-hierarchy">层级闭包</button>
       <button type="button" role="tab" id="onto-tab-coverage" aria-controls="onto-panel-coverage" aria-selected="false" tabindex="-1" data-guide-tab="onto-coverage">CQ 覆盖</button>
+      <button type="button" role="tab" id="onto-tab-report" aria-controls="onto-panel-report" aria-selected="false" tabindex="-1" data-guide-tab="onto-report">读原报告</button>
     </div>
-    <section id="onto-panel-alignment" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-alignment" data-guide-panel="onto-alignment">
-      <section class="guide-band"><h2>1. 类与属性对齐</h2><p>分别把预测本体中的类、属性和金标准词项配对。每种匹配方法先独立报告相似度；最终对候选配对的 Top-N 方法分数聚合，应用阈值后建立一对一映射。</p><p>网页摘要中的类 F1 和属性 F1 是最终综合对齐的 Precision / Recall / F1。后续三元组、公理和层级评测会复用这份映射；如果映射错，错误可能继续影响下游结构分数。</p><p class="guide-note">报告里的单方法分数用于检查对齐过程。排查异常时，优先查看 alignment trace 和 best matching 文件。</p></section>
+    <section id="onto-panel-methods" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-methods" data-guide-panel="onto-methods">
+      <section class="guide-band"><h2>词项匹配用到哪些方法</h2>
+        <p>这里的“方法”是评测器在比对两个词项时使用的相似度方法，不是生成本体的 <code>normal</code>、<code>cqbycq</code>、<code>agent</code> 三种方案。三种生成方案最终都只提交一个领域本体，进入相同的评测流程。</p>
+        <dl class="metric-glossary">
+          <div><dt>Hard match</dt><dd>词项标签规范化后完全相同，候选配对直接记 1.0；大小写等表面差别先被规范化。</dd></div>
+          <div><dt>Sequence match</dt><dd>比较两个规范化字符串的字符顺序相似程度，适合观察局部改写与顺序差别。</dd></div>
+          <div><dt>Levenshtein</dt><dd>比较字符串编辑差异，拼写相近时可能给高分；词义相同而拼写不同不一定得分高。</dd></div>
+          <div><dt>Jaro-Winkler</dt><dd>比较字符串字符与前缀相似程度，对短词项和前缀相近的写法有帮助。</dd></div>
+          <div><dt>Semantic</dt><dd>用本地 embedding 模型比较文本语义，能提示词义接近的候选，但高余弦相似度不证明结构正确。</dd></div>
+          <div><dt>Top-N 聚合</dt><dd>硬匹配成功直接采用 1.0；其余候选取最高的 N 个非硬匹配方法分数求平均，低于最终阈值则拒绝。</dd></div>
+        </dl>
+        <p>默认 N=3，类最终阈值 0.6、属性最终阈值 0.7。候选按聚合分数从高到低贪心选择，一个金标准词项和一个预测词项各最多选一次。报告第 2 层的各方法 P/R/F1 是方法独立运行的诊断值，第 3 层的综合配对才交给下游使用。</p>
+        <p class="guide-note">例如 <code>PlantParts</code> 与 <code>Plant Part</code> 可以因字符串和语义相近被对齐；而 <code>Plant</code> 与 <code>PlantParts</code> 即使字符相似，也会受阈值和一对一竞争约束。是否最终选中，请看 alignment trace 的 <code>selected</code> 与 <code>reason</code>。</p>
+      </section>
+    </section>
+    <section id="onto-panel-alignment" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-alignment" data-guide-panel="onto-alignment" hidden>
+      <section class="guide-band"><h2>01–02 类与属性对齐</h2>
+        <p><strong>输入：</strong>预测本体和 CQ 对齐的金标准本体。类层从两边抽取命名类；属性层区分对象属性与数据属性，统计两侧各有多少。这里的对象是本体词汇，不是用户在 Web 中填写的“模型标签”。</p>
+        <p><strong>处理：</strong>第 1 层给出数量，第 2 层让每种相似度方法独立对齐并计算诊断 P/R/F1，第 3 层按 Top-N 聚合候选、一对一选择最终映射。类和属性分别导出 <code>alignment_trace.csv/json</code> 与 <code>*_best_matching.csv</code>；后者是下游三元组、公理、层级评测的输入。</p>
+        <p><strong>指标：</strong>最终匹配的金标准词项算 TP，剩余预测词项算 FP，未匹配金标准词项算 FN，分别得到类和属性的 Precision / Recall / F1。摘要里的“类 F1”“属性 F1”来自最终综合对齐，不是任一单方法的 F1。</p>
+        <p><strong>怎么读：</strong>类 F1 高而三元组 F1 低，说明词汇可能认对但 domain/range 关系有误；类 F1 低时先查 trace 里的候选分数、阈值拒绝和一对一竞争，再解释下游结构分数。对齐成功也不意味着公理正确。</p>
+        <p class="guide-note">原报告位置：<code>Class-Level Label Matching Report</code> / <code>Property-Level Label Matching Report</code>。先看 Layer 1 数量，再看 Layer 2 单方法结果，最后看 Layer 3 最佳配对与 Overall。原始文件对应 <code>01_class/</code>、<code>02_property/</code>。</p>
+      </section>
     </section>
     <section id="onto-panel-characteristics" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-characteristics" data-guide-panel="onto-characteristics" hidden>
-      <section class="guide-band"><h2>2. 属性特征</h2><p>检查已对齐的对象属性是否具有正确的 OWL 特征：Functional、InverseFunctional、Transitive、Symmetric、Asymmetric、Reflexive、Irreflexive。</p><p>这些特征逐项当作二元判断：金标准和预测都声明为 TP；金标准有而预测没有为 FN；预测多声明为 FP。Symmetric / Asymmetric、Reflexive / Irreflexive 是互斥语义对，错设会形成一边 FP、一边 FN。</p><p>对齐范围只在已匹配属性对上统计；本体级范围还会把带特征但没有匹配到的金标准对象属性计为漏项。两个范围的分母不同，不能只比指标名。</p></section>
+      <section class="guide-band"><h2>02 属性特征</h2>
+        <p><strong>输入：</strong>属性对齐表与两边本体中对象属性的 OWL 类型声明。检查七类特征：Functional（函数性）、InverseFunctional（逆函数性）、Transitive（传递性）、Symmetric（对称性）、Asymmetric（非对称性）、Reflexive（自反性）、Irreflexive（非自反性）。</p>
+        <p><strong>判定：</strong>对每个已对齐对象属性对，逐个特征比较：两边都有为 TP；只有预测有为 FP；只有金标准有为 FN。两边都没有该特征时不产生一个“正确的零”，避免大量不存在的特征虚增 TP。两边都没有任何特征的属性对会被跳过。</p>
+        <p><strong>两个范围：</strong><code>pair-level / AC</code> 只统计已对齐属性对；<code>ontology-level / Global</code> 还会把有特征但完全未对齐的金标准对象属性计为 FN。后者更接近整体覆盖情况，因此两个范围即使都叫 F1，也不能直接当成同一个分数。</p>
+        <p><strong>解读：</strong>例如金标准要求 Transitive，预测写成 Symmetric，Transitive 是 FN、Symmetric 是 FP。脚本还标出 Symmetric/Asymmetric、Reflexive/Irreflexive 的互斥关系，方便发现语义冲突。</p>
+        <p class="guide-note">原报告位置：<code>Property-Level Label Matching Report</code> 末尾的 <code>All Characteristics — pair-level</code> 与 <code>ontology-level</code>。先核对这两个表的分母，再看各特征的 TP/FP/FN。</p>
+      </section>
     </section>
     <section id="onto-panel-triple" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-triple" data-guide-panel="onto-triple" hidden>
-      <section class="guide-band"><h2>3. domain / range 三元组</h2><p>提取 <code>rdfs:domain</code> 和 <code>rdfs:range</code> 声明，检查每个属性的定义域、值域及类型。</p><dl class="metric-glossary"><div><dt>语义诊断（第 2 层）</dt><dd>嵌入相似度用于观察候选语义接近程度，不是严格结构正确率。</dd></div><div><dt>对齐条件（第 3 层）</dt><dd>只评估已对齐属性；domain 用类映射比较，range 按对象/数据属性类型处理。</dd></div><div><dt>全局（第 4 层）</dt><dd>把未对齐属性上的声明也纳入总体范围。对齐范围高而全局低，说明结构可能不错，但词项对齐或覆盖存在缺口。</dd></div><div><dt>mismatch</dt><dd>双方都声明了值但不一致；评分同时增加一个 FP 和一个 FN。</dd></div></dl></section>
+      <section class="guide-band"><h2>03 domain / range 三元组</h2>
+        <p><strong>输入：</strong>两边本体的对象/数据属性，以及上游类、属性映射。这里的“三元组”重点是每个属性的 <code>rdfs:domain</code>、<code>rdfs:range</code> 声明；并非统计上传文件里所有 RDF 三元组。</p>
+        <dl class="metric-glossary">
+          <div><dt>Layer 1 · 统计</dt><dd>分别数出有完整 domain+range、只有 domain、只有 range、两侧均未声明的属性；这层没有结构 F1。</dd></div>
+          <div><dt>Layer 2 · 语义概览</dt><dd>把属性及其声明渲染成文本，用 embedding 余弦相似度在同一属性类型内做阈值配对，报告候选的 P/R/F1。它衡量“文本语义接近”，不是严格 domain/range 相等。</dd></div>
+          <div><dt>Layer 3 · 严格 / AC</dt><dd>只看上游已对齐的属性对。对象属性的 domain/range 借助类映射比较；数据属性的 range 比较规范化数据类型。</dd></div>
+          <div><dt>Layer 4 · 全局</dt><dd>保留严格层的 TP，并把未对齐属性上的多余预测声明计 FP、缺失金标准声明计 FN，从整个本体范围重新计算分数。</dd></div>
+        </dl>
+        <p><strong>单侧判定：</strong>两边都没声明为 <code>skip</code>；只在预测中声明为 FP；只在金标准中声明为 FN；两边声明并一致为 TP；两边都有但不一致为 <code>mismatch</code>，同时计入 FP 和 FN。对象/数据属性类型错配会单列诊断，避免误把两种属性的 range 混在一起。</p>
+        <p><strong>怎么读：</strong>Layer 2 高、Layer 3 低，说明文字看似相近但结构没有对上；Layer 3 高、Layer 4 低，说明已对齐的属性结构较好，但还有未对齐属性或声明。</p>
+        <p class="guide-note">原报告位置：<code>Property-Axiom (Triple) Evaluation Report</code> 的 Layer 1–4。详情可查 <code>03_triple/triple_result.json</code> 和 <code>layer3_pairs.csv/json</code>。</p>
+      </section>
     </section>
     <section id="onto-panel-axiom" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-axiom" data-guide-panel="onto-axiom" hidden>
-      <section class="guide-band"><h2>4. Atomic TBox 与公理评测</h2><p><strong>Atomic TBox 提取是中间步骤，不是分数。</strong>评测器从上传本体提取原子 TBox 公理，供后续对齐和比较使用。报告和产物会保留 JSON / TXT / XLSX 等文件。</p><dl class="metric-glossary"><div><dt>语义候选（第 2 层）</dt><dd>嵌入相似度帮助检索候选公理，是诊断信息，不等价于结构匹配。</dd></div><div><dt>严格对齐（第 3 层）</dt><dd>复用类/属性映射后比较公理结构。正确为 TP；缺失、多余为 FN / FP；同类公理结构不一致的 mismatch 同时计 FP 和 FN。</dd></div><div><dt>全局（第 4 层）</dt><dd>在严格结果上纳入未对齐主题上的公理：未对齐预测公理增加 FP，未对齐金标准公理增加 FN。</dd></div></dl><p class="guide-note">公理的全局 F1 低于严格 F1，常见原因是词项没对齐或额外生成了公理；严格 F1 低则表示已对齐词项上的公理结构仍有差异。</p></section>
+      <section class="guide-band"><h2>04–05 Atomic TBox 与公理</h2>
+        <p><strong>先抽取，再比较。</strong>Atomic TBox 脚本把预测本体拆成结构化的类/属性公理，生成 JSON、TXT、XLSX，作为公理评测输入。它是中间阶段，没有“Atomic F1”；若抽取失败，下游公理和层级阶段无法正常继续。</p>
+        <dl class="metric-glossary">
+          <div><dt>Layer 1 · 数量</dt><dd>按词项与公理类型统计金标准和预测有多少条。数量接近不代表内容正确。</dd></div>
+          <div><dt>Layer 2 · 语义候选</dt><dd>把公理表达式转成文本，用 embedding 余弦相似度寻找一对一候选。相似公理可有不同的逻辑结构，因此它仅作诊断；该层若被关闭或计算失败，脚本仍可继续严格和全局结构评测。</dd></div>
+          <div><dt>Layer 3 · 严格结构</dt><dd>先使用类/属性映射定位主题，再比较公理类型与内部表达式，包括类、属性、数据类型及复合逻辑结构。每个预测公理最多用于匹配一条金标准公理。</dd></div>
+          <div><dt>Layer 4 · 全局范围</dt><dd>在 Layer 3 结果之上，把未对齐主题上的金标准公理加到 FN，把未对齐主题上的预测公理加到 FP；TP 不变。</dd></div>
+        </dl>
+        <p><strong>Layer 3 状态：</strong><code>TP</code> 是结构匹配；<code>FN</code> 是已对齐主题缺少对应公理；<code>pure FP</code> 是已对齐主题有额外预测公理；<code>mismatch</code> 是同类公理存在但表达式不一致，既是预测侧错误也是金标准侧缺口，所以 FP 和 FN 各加一次；<code>skip</code> 是主题根本没有对齐，在严格层暂不计分，进入全局层后再计入。</p>
+        <p>例如金标准写 <code>Carnivore ⊑ Animal</code>，预测的对应类却只写了 <code>Carnivore ⊑ Plant</code>：主题虽然能对齐，但上位类不同，应查 mismatch / FN，而不能只看“有一条 SubClassOf”就当作命中。类似地，预测多写的 Declaration 等公理可能进入 FP，因此“类名全对”并不保证公理 F1 高。</p>
+        <p class="guide-note">原报告位置：<code>Axiom-Level TBox Evaluation Report</code> 的 Layer 1–4。若想知道为何分低，先看 Layer 3 的 TP / Mismatch / FN / Pure FP / Skip 明细，再看 Layer 4 额外纳入了多少未对齐公理。结构化明细在 <code>04_axiom/eval_axioms_result.json</code>、<code>details.csv</code>。</p>
+      </section>
     </section>
     <section id="onto-panel-hierarchy" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-hierarchy" data-guide-panel="onto-hierarchy" hidden>
-      <section class="guide-band"><h2>5. 层级闭包</h2><p>使用 HermiT reasoner 计算类和属性的可推出层级关系，再和金标准层级比较。指标包括类层级、属性层级和合并后的层级 Precision / Recall / F1。</p><p>闭包会计入显式声明之外、可由推理推出的关系。它衡量的是逻辑推论是否一致，不表示预测文件中显式写出了所有这些关系。</p><p>层级 F1 看推理关系整体匹配；闭包 CQ 覆盖看推理能否补足回答每道 CQ 所需的公理关系。</p></section>
+      <section class="guide-band"><h2>06 HermiT 层级闭包</h2>
+        <p><strong>输入：</strong>金标准本体、预测本体以及前面得到的类/属性映射。HermiT 分别计算两边可推出的 <code>SubClassOf</code>、<code>SubPropertyOf</code> 等层级事实；等价类/等价属性可以对应双向包含关系。</p>
+        <p><strong>比较：</strong>先把预测侧层级事实翻译到金标准词汇，再与金标准闭包求交集得到 TP；多余预测事实为 FP，缺失金标准事实为 FN。无法通过对齐表翻译的预测事实也计入 FP。类、属性和合并后的 P/R/F1 分别展示。</p>
+        <p><strong>断言与推理：</strong>报告中的 <code>[asserted]</code> 表示源 OWL 直接声明，<code>[inferred]</code> 表示 HermiT 推出。只要闭包事实一致，预测不必用同样的显式公理写法；但层级 F1 高也不能证明其他公理或每个 CQ 都完整。</p>
+        <p class="guide-note">原报告位置：<code>HermiT Closure Evaluation Report</code> 的 <code>Closure sizes</code>、<code>Metrics</code> 和类/属性层级详情。先查未翻译预测事实与 FN 列，再回看上游对齐表。原始结果在 <code>05_hierarchy/hierarchy_result.json</code> 与 <code>hierarchy_pairs.csv</code>。</p>
+      </section>
     </section>
     <section id="onto-panel-coverage" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-coverage" data-guide-panel="onto-coverage" hidden>
-      <section class="guide-band"><h2>6. CQ 公理覆盖</h2><p>每道金标准 CQ 都关联一组所需 TBox 公理。脚本计算至少覆盖一个、平均覆盖率和完全覆盖三种结果：</p><ul><li><strong>至少一项：</strong>至少匹配一条所需公理的 CQ 占比。</li><li><strong>平均覆盖：</strong>各 CQ 已覆盖公理数 / 该题所需公理数，再对 CQ 取平均。</li><li><strong>完全覆盖：</strong>所需公理全部覆盖的 CQ 占比。</li></ul><p>严格覆盖只算直接匹配公理；闭包覆盖额外检查 HermiT 推出的层级关系。两种覆盖率是不同口径，不能互相替代。</p></section>
+      <section class="guide-band"><h2>05–06 把结果映射回 CQ</h2>
+        <p><strong>来源：</strong>金标准中的每条 TBox 公理带有所支持的 CQ ID。同一公理可能服务多道 CQ。对某题的覆盖率，只用该题关联的公理作分母，不能用整个本体的公理数替代。</p>
+        <p><strong>严格口径：</strong>公理 Layer 3 中得到 TP 的金标准公理计为已覆盖；FN、mismatch、skip 均不算已覆盖。每道题先得出 TP 公理数 / 所需公理数，再汇总：</p>
+        <dl class="metric-glossary">
+          <div><dt>至少一项覆盖</dt><dd>有至少一条所需公理为 TP 的 CQ 数 / 全部 CQ 数。</dd></div>
+          <div><dt>平均覆盖</dt><dd>先对每个有关联公理的 CQ 算覆盖比例，再取平均；不要与“至少一项”混读。</dd></div>
+          <div><dt>完全覆盖</dt><dd>所有所需公理都为 TP 的 CQ 数 / 全部 CQ 数。</dd></div>
+          <div><dt>逐题明细</dt><dd>列出题目、TP / Total、缺失公理 ID 和状态，帮助定位哪条约束没有实现。</dd></div>
+        </dl>
+        <p><strong>闭包补救口径：</strong>层级脚本再看金标准层级公理涉及的包含关系能否由预测本体推导出来。严格已得 TP 的公理不会重复加分；严格未命中但闭包能够证明的相关层级关系可被补救。复合公理有多条必要关系时，需要全部满足才算完整补救；未标注到单一 CQ 的推理链事实只用于层级总体比较。</p>
+        <p>闭包的“至少一项”和“完全覆盖”同时考虑严格匹配与闭包补救；每题平均率结合严格 TP 与可补救关系。它不等于“把所有未命中的复杂公理都当作正确”。因此严格与闭包两组值都要看，差值才说明推理多挽回了多少。</p>
+        <p class="guide-note">原报告位置：<code>Axiom-Level TBox Evaluation Report → CQ Coverage (strict)</code>，以及 <code>HermiT Closure Evaluation Report → CQ Coverage (closure-based)</code>。先核对严格逐题缺失公理，再看闭包的 <code>Closure-rescued</code> 和 <code>Missing closure facts</code>。</p>
+      </section>
+    </section>
+    <section id="onto-panel-report" class="guide-tab-panel" role="tabpanel" aria-labelledby="onto-tab-report" data-guide-panel="onto-report" hidden>
+      <section class="guide-band"><h2>拿到一份 report.md，建议这样读</h2>
+        <ol class="report-reading-steps">
+          <li><strong>先核对输入和规模。</strong>从 Class / Property 的 Layer 1 看金标准与预测的类、属性数；如果解析结果异常少，后面的低分可能是输入本体或序列化的问题。</li>
+          <li><strong>读最终映射。</strong>Layer 2 单方法分数只供诊断；以 Layer 3 最佳配对表为准，检查名称不同但被判成同一个词项的项，以及应匹配却被阈值拒绝的项。</li>
+          <li><strong>拆开看结构口径。</strong>Triple 和 Axiom 的 Layer 2 是语义候选，Layer 3 是已对齐项上的严格比较，Layer 4 才纳入未对齐项。不要把三层 F1 当作同一口径的重复结果。</li>
+          <li><strong>对照错项列表。</strong>看 TP、FN、Pure FP、Mismatch、Skip：FN 指向漏建，Pure FP 指向多建，Mismatch 指向表达式不一致，Skip 指向对齐缺口。报告只在有相应结果时列出某些明细表。</li>
+          <li><strong>最后看推理与 CQ。</strong>层级表告诉你哪些包含关系可以推出；严格与闭包 CQ 表告诉你这些关系是否对具体问题有帮助。结合 <code>AX</code> ID 追到所需公理。</li>
+        </ol>
+        <div class="table-wrap"><table class="data-table guide-report-table"><thead><tr><th>报告主章节</th><th>主要回答的问题</th><th>对应原始结果</th></tr></thead><tbody>
+          <tr><td>Class-Level / Property-Level</td><td>词项抽取与一对一对齐是否正确？</td><td><code>01_class/</code>、<code>02_property/</code></td></tr>
+          <tr><td>Property-Axiom (Triple)</td><td>domain/range 是否按已对齐词项正确建立？全本体还有多少漏项？</td><td><code>03_triple/</code></td></tr>
+          <tr><td>Axiom-Level TBox</td><td>原子公理是否结构一致？严格 CQ 公理覆盖多少？</td><td><code>04_axiom/</code></td></tr>
+          <tr><td>HermiT Closure</td><td>推理后的层级是否一致？能补救哪些 CQ 层级缺口？</td><td><code>05_hierarchy/</code></td></tr>
+        </tbody></table></div>
+        <p class="guide-note">Web 的中文摘要只选了少量关键指标，原始报告包含更多计数、候选配对、逐题和逐公理明细。网页显示两位小数；核对具体差异请以下载的原始文件为准。</p>
+      </section>
     </section>
   </section>
 </div>

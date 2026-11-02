@@ -291,6 +291,14 @@ input[type="file"] { display: block; min-height: 35px; padding: 5px; background:
 .evaluation-steps { counter-reset: steps; list-style: none; padding: 0 !important; }
 .evaluation-steps li { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid #e7ecec; padding: 10px 0; }
 .evaluation-steps strong { color: var(--ink); }
+.pipeline-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 22px !important; padding: 0 !important; list-style: none; }
+.pipeline-steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: 10px; border-top: 1px solid #e7ecec; padding: 12px 0; }
+.pipeline-steps li > span { color: var(--teal-dark); font-size: 11px; font-weight: 700; }
+.pipeline-steps strong { color: var(--ink); font-size: 13px; }
+.pipeline-steps p { margin: 4px 0 0; font-size: 12px; }
+.guide-report-table { table-layout: auto; min-width: 710px; }
+.guide-report-table th:first-child { width: 25%; }
+.guide-report-table td { vertical-align: top; line-height: 1.5; }
 .data-table small { display: block; margin-top: 4px; color: var(--muted); }
 .metric-improved { color: var(--green); font-weight: 700; }
 .metric-declined { color: var(--red); font-weight: 700; }
@@ -320,6 +328,7 @@ input[type="file"] { display: block; min-height: 35px; padding: 5px; background:
   .records-table tbody tr.record-empty td { display: block; }
   .records-actions { flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
   .score-summary-grid, .metric-glossary { grid-template-columns: minmax(0, 1fr); }
+  .pipeline-steps { grid-template-columns: minmax(0, 1fr); }
   .guide-tabs { gap: 0 7px; }
   .guide-tabs [role="tab"] { font-size: 12px; padding: 0 3px; }
   .detail-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
